@@ -22,7 +22,7 @@ impl<P> Tree<P> {
         Self { nodes: vec![] }
     }
 
-    pub fn nodes(&self) -> &[Node<P>]{
+    pub fn nodes(&self) -> &[Node<P>] {
         &self.nodes
     }
 
@@ -47,11 +47,11 @@ impl<P> Tree<P> {
         )
     }
 
-    fn print_node<F: Fn(&P) -> &str>(nodes: &[Node<P>], n: usize, o: usize, f: &F) {
+    fn print_node<F: Fn(&P) -> S, S: AsRef<str>>(nodes: &[Node<P>], n: usize, o: usize, f: &F) {
         println!(
             "{}{}:{:?}",
             str::repeat(" ", o),
-            f(&nodes[n].data),
+            f(&nodes[n].data).as_ref(),
             nodes[n].branch_length.unwrap_or(-1.),
         );
         nodes[n]
@@ -59,8 +59,10 @@ impl<P> Tree<P> {
             .iter()
             .for_each(|c| Tree::<P>::print_node(nodes, *c, o + 2, f))
     }
-    pub fn print<F: Fn(&P) -> &str>(&self, f: F) {
-        Tree::<P>::print_node(&self.nodes, 0, 0, &f);
+    pub fn print<F: Fn(&P) -> S, S: AsRef<str>>(&self, f: F) {
+        if !self.nodes.is_empty() {
+            Tree::<P>::print_node(&self.nodes, 0, 0, &f);
+        }
     }
 
     pub fn parent(&self, n: usize) -> Option<usize> {
