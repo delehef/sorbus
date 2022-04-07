@@ -206,8 +206,35 @@ impl<P> Tree<P> {
     pub fn leaves<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
         (0..self.nodes.len()).filter(move |n| self.nodes[*n].is_leaf())
     }
+
     pub fn inners<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
         (0..self.nodes.len()).filter(move |n| !self.nodes[*n].is_leaf())
+    }
+
+    pub fn to_newick<ID: Fn(&P) -> S, S: AsRef<str>>(&self, node_to_id: ID) -> String {
+        fn fmt_node<PP, ID: Fn(&PP) -> S, S: AsRef<str>>(t: &Tree<PP>, n: usize, r: &mut String, node_to_id: &ID) {
+            if t[n].is_leaf() {
+                r.push_str(node_to_id(&t[n].data).as_ref());
+                t[n].branch_length.map(|l| r.push_str(&format!(":{}", l)));
+            } else {
+                r.push('(');
+
+                let mut children = t[n].children().iter().peekable();
+                while let Some(c) = children.next() {
+                    fmt_node(t, *c, r, node_to_id);
+                    if children.peek().is_some() {
+                        r.push_str(",\n");
+                    }
+                }
+                r.push(')');
+                r.push_str(node_to_id(&t[n].data).as_ref());
+                t[n].branch_length.map(|l| r.push_str(&format!(":{}", l)));
+            }
+        }
+        let mut r = String::new();
+        fmt_node(self, 0, &mut r, &node_to_id);
+        r.push(';');
+        r
     }
 }
 impl<P> std::ops::Index<usize> for Tree<P> {
