@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 pub struct Node<T> {
     parent: usize,
     children: Vec<usize>,
@@ -99,22 +101,30 @@ impl<P> Tree<P> {
         }
     }
 
-    pub fn mrca(&self, nodes: &[usize]) -> Option<usize> {
-        if nodes.is_empty() {
-            None
+    pub fn mrca<'a>(&self, nodes: impl IntoIterator<Item = &'a usize>) -> Option<usize> {
+        let mut first;
+        let mut nodes = nodes.into_iter();
+        if let Some(node) = nodes.next() {
+            first = *node;
         } else {
-            let ancestries = nodes
-                .iter()
-                .map(|&n| self.ascendance(n))
-                .collect::<Vec<_>>();
+            return None;
+        };
 
-            for p in ancestries[0].iter() {
-                if ancestries.iter().all(|a| a.contains(p)) {
-                    return Some(*p);
-                }
+        let ancestors = self.ascendance(first);
+        let ranks = ancestors.iter().enumerate().map(|(i, j)| (j, i)).collect::<HashMap<_, _>>();
+        let mut checked = HashSet::<usize>::from_iter(ancestors.iter().copied());
+        let mut oldest: usize = 0;
+
+        while let Some(species) = nodes.next() {
+            let mut species: usize = *species;
+            while !checked.contains(&species) {
+                checked.insert(species);
+                species = self.nodes[species].parent;
+                oldest = oldest.max(*ranks.get(&species).unwrap_or(&&0));
             }
-            None
         }
+
+        Some(ancestors[dbg!(oldest)])
     }
 
     pub fn ascendance(&self, n: usize) -> Vec<usize> {
