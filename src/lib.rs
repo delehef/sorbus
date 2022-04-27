@@ -16,16 +16,29 @@ impl<T> Node<T> {
 }
 
 pub struct Tree<P> {
+    root: usize,
     nodes: Vec<Node<P>>,
 }
 
 impl<P> Tree<P> {
     pub fn new() -> Self {
-        Self { nodes: vec![] }
+        Self { root: 0, nodes: vec![] }
+    }
+
+    pub fn set_root(&mut self, new_root: usize) {
+        self.root = new_root;
+    }
+
+    pub fn root(&self) -> usize {
+        self.root
     }
 
     pub fn nodes(&self) -> &[Node<P>] {
         &self.nodes
+    }
+
+    pub fn nodes_mut(&mut self) -> &mut [Node<P>] {
+        &mut self.nodes
     }
 
     fn insert_node(&mut self, parent: usize, n: Node<P>) -> usize {
@@ -63,12 +76,12 @@ impl<P> Tree<P> {
     }
     pub fn print<F: Fn(&P) -> S, S: AsRef<str>>(&self, f: F) {
         if !self.nodes.is_empty() {
-            Tree::<P>::print_node(&self.nodes, 0, 0, &f);
+            Tree::<P>::print_node(&self.nodes, self.root, 0, &f);
         }
     }
 
     pub fn parent(&self, n: usize) -> Option<usize> {
-        if self.nodes[n].parent == 0 {
+        if self.nodes[n].parent == self.root {
             None
         } else {
             Some(self.nodes[n].parent)
@@ -189,7 +202,7 @@ impl<P> Tree<P> {
     pub fn node_depth(&self, n: usize) -> f32 {
         let mut depth = self.nodes[n].branch_length.unwrap();
         let mut parent = self.nodes[n].parent;
-        while parent != 0 {
+        while parent != self.root {
             depth += self.nodes[parent].branch_length.unwrap();
             parent = self.nodes[parent].parent;
         }
@@ -199,7 +212,7 @@ impl<P> Tree<P> {
     pub fn node_topological_depth(&self, n: usize) -> f32 {
         let mut depth = 0.;
         let mut parent = self.nodes[n].parent;
-        while parent != 0 {
+        while parent != self.root {
             depth += 1.;
             parent = self.nodes[parent].parent;
         }
@@ -222,7 +235,12 @@ impl<P> Tree<P> {
     }
 
     pub fn to_newick<ID: Fn(&P) -> S, S: AsRef<str>>(&self, node_to_id: ID) -> String {
-        fn fmt_node<PP, ID: Fn(&PP) -> S, S: AsRef<str>>(t: &Tree<PP>, n: usize, r: &mut String, node_to_id: &ID) {
+        fn fmt_node<PP, ID: Fn(&PP) -> S, S: AsRef<str>>(
+            t: &Tree<PP>,
+            n: usize,
+            r: &mut String,
+            node_to_id: &ID,
+        ) {
             if t[n].is_leaf() {
                 r.push_str(node_to_id(&t[n].data).as_ref());
                 t[n].branch_length.map(|l| r.push_str(&format!(":{}", l)));
@@ -242,7 +260,7 @@ impl<P> Tree<P> {
             }
         }
         let mut r = String::new();
-        fmt_node(self, 0, &mut r, &node_to_id);
+        fmt_node(self, self.root, &mut r, &node_to_id);
         r.push(';');
         r
     }
