@@ -241,6 +241,13 @@ impl<P> Tree<P> {
         (0..self.nodes.len()).filter(move |n| self.nodes[*n].is_leaf())
     }
 
+    pub fn map_leaves<F: FnMut(&mut Node<P>)>(&mut self, f: &mut F) {
+        self.nodes
+            .iter_mut()
+            .filter(|n| n.is_leaf())
+            .for_each(|n| f(n));
+    }
+
     pub fn inners<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
         (0..self.nodes.len()).filter(move |n| !self.nodes[*n].is_leaf())
     }
