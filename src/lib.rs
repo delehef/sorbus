@@ -22,7 +22,10 @@ pub struct Tree<P> {
 
 impl<P> Tree<P> {
     pub fn new() -> Self {
-        Self { root: 0, nodes: vec![] }
+        Self {
+            root: 0,
+            nodes: vec![],
+        }
     }
 
     pub fn set_root(&mut self, new_root: usize) {
@@ -31,6 +34,10 @@ impl<P> Tree<P> {
 
     pub fn root(&self) -> usize {
         self.root
+    }
+
+    pub fn is_root(&self, n: usize) -> bool {
+        self.root == n
     }
 
     pub fn nodes(&self) -> &[Node<P>] {
@@ -124,7 +131,11 @@ impl<P> Tree<P> {
         };
 
         let ancestors = self.ascendance(first);
-        let ranks = ancestors.iter().enumerate().map(|(i, j)| (j, i)).collect::<HashMap<_, _>>();
+        let ranks = ancestors
+            .iter()
+            .enumerate()
+            .map(|(i, j)| (j, i))
+            .collect::<HashMap<_, _>>();
         let mut checked = HashSet::<usize>::from_iter(ancestors.iter().copied());
         let mut oldest: usize = 0;
 
