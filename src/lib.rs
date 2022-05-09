@@ -150,7 +150,7 @@ impl<P> Tree<P> {
             }
         }
 
-        Some(ancestors[dbg!(oldest)])
+        Some(ancestors[oldest])
     }
 
     pub fn ascendance(&self, n: usize) -> Vec<usize> {
