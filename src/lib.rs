@@ -18,6 +18,7 @@ impl<T> Node<T> {
 pub struct Tree<P> {
     root: usize,
     nodes: Vec<Node<P>>,
+    _spans: HashMap<usize, Vec<usize>>,
 }
 
 impl<P> Tree<P> {
@@ -25,6 +26,7 @@ impl<P> Tree<P> {
         Self {
             root: 0,
             nodes: vec![],
+            _spans: HashMap::new(),
         }
     }
 
@@ -194,6 +196,16 @@ impl<P> Tree<P> {
         r
     }
 
+    pub fn cached_leaves_of(&self, n: usize) -> &[usize] {
+        &self._spans[&n]
+    }
+
+    pub fn cache_leaves(&mut self) {
+        for k in 0..self.nodes.len() {
+            self._spans.insert(k, self.leaves_of(k));
+        }
+    }
+
     pub fn children(&self, n: usize) -> &[usize] {
         &self[n].children
     }
@@ -220,17 +232,17 @@ impl<P> Tree<P> {
         depth
     }
 
-    pub fn node_topological_depth(&self, n: usize) -> f32 {
-        let mut depth = 0.;
+    pub fn node_topological_depth(&self, n: usize) -> i64 {
+        let mut depth = 0;
         let mut parent = self.nodes[n].parent;
         while parent != self.root {
-            depth += 1.;
+            depth += 1;
             parent = self.nodes[parent].parent;
         }
         depth
     }
 
-    pub fn topological_depth(&self) -> (usize, f32) {
+    pub fn topological_depth(&self) -> (usize, i64) {
         self.leaves()
             .map(|n| (n, self.node_topological_depth(n)))
             .max_by(|x, y| x.1.partial_cmp(&y.1).unwrap())
