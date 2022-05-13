@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
+pub type NodeID = usize;
+
 pub struct Node<T> {
-    parent: usize,
-    children: Vec<usize>,
+    parent: Option<NodeID>,
+    children: Vec<NodeID>,
     pub branch_length: Option<f32>,
     pub data: T,
 }
@@ -10,56 +12,71 @@ impl<T> Node<T> {
     pub fn is_leaf(&self) -> bool {
         self.children.is_empty()
     }
-    pub fn children(&self) -> &[usize] {
+    pub fn children(&self) -> &[NodeID] {
         &self.children
     }
 }
 
 pub struct Tree<P> {
-    root: usize,
-    nodes: Vec<Node<P>>,
-    _spans: HashMap<usize, Vec<usize>>,
+    root: NodeID,
+    current_id: NodeID,
+    nodes: HashMap<NodeID, Node<P>>,
+    _spans: HashMap<NodeID, Vec<NodeID>>,
 }
 
 impl<P> Tree<P> {
     pub fn new() -> Self {
         Self {
             root: 0,
-            nodes: vec![],
+            current_id: 0,
+            nodes: HashMap::new(),
             _spans: HashMap::new(),
         }
     }
 
-    pub fn set_root(&mut self, new_root: usize) {
+    pub fn set_root(&mut self, new_root: NodeID) {
         self.root = new_root;
     }
 
-    pub fn root(&self) -> usize {
+    pub fn root(&self) -> NodeID {
         self.root
     }
 
-    pub fn is_root(&self, n: usize) -> bool {
+    pub fn is_root(&self, n: NodeID) -> bool {
         self.root == n
     }
 
-    pub fn nodes(&self) -> &[Node<P>] {
-        &self.nodes
+    pub fn nodes(&self) -> impl Iterator<Item = &Node<P>> {
+        self.nodes.values()
     }
 
-    pub fn nodes_mut(&mut self) -> &mut [Node<P>] {
-        &mut self.nodes
+    pub fn len(&self) -> NodeID {
+        self.nodes.len()
     }
 
-    fn insert_node(&mut self, parent: usize, n: Node<P>) -> usize {
-        self.nodes.push(n);
-        let id = self.nodes.len() - 1;
-        if !self.nodes.is_empty() && (id != parent) {
-            self.nodes[parent].children.push(id);
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
+    pub fn nodes_mut(&mut self) -> impl Iterator<Item = &mut Node<P>> {
+        self.nodes.values_mut()
+    }
+
+    fn insert_node(&mut self, parent: Option<NodeID>, n: Node<P>) -> NodeID {
+        self.current_id += 1;
+        let id = self.current_id;
+        self.nodes.insert(id, n);
+        if let Some(parent) = parent {
+            self.nodes.get_mut(&parent).unwrap().children.push(id);
         }
         id
     }
 
-    pub fn add_node(&mut self, parent: usize, data: P) -> usize {
+    pub fn add_node(&mut self, parent: Option<NodeID>, data: P) -> NodeID {
+        if let Some(parent) = parent {
+            assert!(self.nodes.contains_key(&parent));
+        }
+
         self.insert_node(
             parent,
             Node {
@@ -71,7 +88,11 @@ impl<P> Tree<P> {
         )
     }
 
-    fn print_node<F: Fn(&P) -> S, S: AsRef<str>>(nodes: &[Node<P>], n: usize, o: usize, f: &F) {
+    pub fn delete_node(&mut self, n: NodeID) -> Option<()> {
+        self.nodes.remove_entry(&n).map(|_| ())
+    }
+
+    fn print_node<F: Fn(&P) -> S, S: AsRef<str>>(nodes: &[&Node<P>], n: NodeID, o: NodeID, f: &F) {
         println!(
             "{}{}:{:?}",
             str::repeat(" ", o),
@@ -85,46 +106,41 @@ impl<P> Tree<P> {
     }
     pub fn print<F: Fn(&P) -> S, S: AsRef<str>>(&self, f: F) {
         if !self.nodes.is_empty() {
-            Tree::<P>::print_node(&self.nodes, self.root, 0, &f);
+            Tree::<P>::print_node(&self.nodes.values().collect::<Vec<_>>(), self.root, 0, &f);
         }
     }
 
-    pub fn parent(&self, n: usize) -> Option<usize> {
-        if self.nodes[n].parent == self.root {
-            None
-        } else {
-            Some(self.nodes[n].parent)
-        }
+    pub fn parent(&self, n: NodeID) -> Option<NodeID> {
+        self[n].parent
     }
 
-    pub fn find_leaf<F>(&self, f: F) -> Option<usize>
+    pub fn find_leaf<F>(&self, f: F) -> Option<NodeID>
     where
         F: Fn(&P) -> bool,
     {
         match self
             .nodes
             .iter()
-            .enumerate()
             .filter(|(_, n)| n.is_leaf())
             .find(|(_i, n)| f(&n.data))
         {
-            Some((i, _)) => Some(i),
+            Some((i, _)) => Some(*i),
             None => None,
         }
     }
 
-    pub fn find_node<F>(&self, f: F) -> Option<usize>
+    pub fn find_node<F>(&self, f: F) -> Option<NodeID>
     where
         F: Fn(&P) -> bool,
     {
-        match self.nodes.iter().enumerate().find(|(_i, n)| f(&n.data)) {
-            Some((i, _)) => Some(i),
+        match self.nodes.iter().find(|(_i, n)| f(&n.data)) {
+            Some((i, _)) => Some(*i),
             None => None,
         }
     }
 
-    pub fn mrca<'a>(&self, nodes: impl IntoIterator<Item = &'a usize>) -> Option<usize> {
-        let mut first;
+    pub fn mrca<'a>(&self, nodes: impl IntoIterator<Item = &'a NodeID>) -> Option<NodeID> {
+        let first;
         let mut nodes = nodes.into_iter();
         if let Some(node) = nodes.next() {
             first = *node;
@@ -138,14 +154,14 @@ impl<P> Tree<P> {
             .enumerate()
             .map(|(i, j)| (j, i))
             .collect::<HashMap<_, _>>();
-        let mut checked = HashSet::<usize>::from_iter(ancestors.iter().copied());
-        let mut oldest: usize = 0;
+        let mut checked = HashSet::<NodeID>::from_iter(ancestors.iter().copied());
+        let mut oldest: NodeID = 0;
 
         while let Some(species) = nodes.next() {
-            let mut species: usize = *species;
+            let mut species: NodeID = *species;
             while !checked.contains(&species) {
                 checked.insert(species);
-                species = self.nodes[species].parent;
+                species = self.nodes[&species].parent.unwrap();
                 oldest = oldest.max(*ranks.get(&species).unwrap_or(&&0));
             }
         }
@@ -153,20 +169,20 @@ impl<P> Tree<P> {
         Some(ancestors[oldest])
     }
 
-    pub fn ascendance(&self, n: usize) -> Vec<usize> {
-        let mut n = n;
-        let mut r = vec![n];
+    pub fn ascendance(&self, n: NodeID) -> Vec<NodeID> {
+        let mut r = Vec::new();
+        let mut parent = Some(n);
 
-        while let Some(x) = self.parent(n) {
-            r.push(x);
-            n = x;
+        while let Some(species) = parent {
+            r.push(species);
+            parent = self.parent(species);
         }
 
         r
     }
 
-    pub fn descendants(&self, n: usize) -> Vec<usize> {
-        fn find_descendants<PP>(t: &Tree<PP>, n: usize, ax: &mut Vec<usize>) {
+    pub fn descendants(&self, n: NodeID) -> Vec<NodeID> {
+        fn find_descendants<PP>(t: &Tree<PP>, n: NodeID, ax: &mut Vec<NodeID>) {
             ax.push(n);
             for &c in t[n].children.iter() {
                 find_descendants(t, c, ax);
@@ -180,8 +196,8 @@ impl<P> Tree<P> {
         r
     }
 
-    pub fn leaves_of(&self, n: usize) -> Vec<usize> {
-        fn find_descendants_leaves<PP>(t: &Tree<PP>, n: usize, ax: &mut Vec<usize>) {
+    pub fn leaves_of(&self, n: NodeID) -> Vec<NodeID> {
+        fn find_descendants_leaves<PP>(t: &Tree<PP>, n: NodeID, ax: &mut Vec<NodeID>) {
             if t[n].is_leaf() {
                 ax.push(n);
             } else {
@@ -196,78 +212,86 @@ impl<P> Tree<P> {
         r
     }
 
-    pub fn cached_leaves_of(&self, n: usize) -> &[usize] {
+    pub fn cached_leaves_of(&self, n: NodeID) -> &[NodeID] {
         &self._spans[&n]
     }
 
     pub fn cache_leaves(&mut self) {
-        for k in 0..self.nodes.len() {
+        for &k in self.nodes.keys() {
             self._spans.insert(k, self.leaves_of(k));
         }
     }
 
-    pub fn children(&self, n: usize) -> &[usize] {
+    pub fn children(&self, n: NodeID) -> &[NodeID] {
         &self[n].children
     }
 
-    pub fn siblings(&self, n: usize) -> Vec<usize> {
-        self.descendants(self[n].parent)
-            .into_iter()
-            .filter(|&nn| nn != n)
-            .filter(|n| self[*n].is_leaf())
-            .collect()
+    pub fn siblings(&self, n: NodeID) -> Vec<NodeID> {
+        if let Some(parent) = self[n].parent {
+            self.descendants(parent)
+                .into_iter()
+                .filter(|&nn| nn != n)
+                .filter(|n| self[*n].is_leaf())
+                .collect()
+        } else {
+            vec![]
+        }
     }
 
     pub fn depth(&self) -> f32 {
         todo!()
     }
 
-    pub fn node_depth(&self, n: usize) -> f32 {
-        let mut depth = self.nodes[n].branch_length.unwrap();
-        let mut parent = self.nodes[n].parent;
-        while parent != self.root {
-            depth += self.nodes[parent].branch_length.unwrap();
-            parent = self.nodes[parent].parent;
+    pub fn node_depth(&self, n: NodeID) -> f32 {
+        let mut depth = self[n].branch_length.unwrap();
+        let mut n = n;
+        while let Some(parent) = self[n].parent {
+            depth += self[parent].branch_length.unwrap();
+            n = parent;
         }
         depth
     }
 
-    pub fn node_topological_depth(&self, n: usize) -> i64 {
+    pub fn node_topological_depth(&self, n: NodeID) -> i64 {
         let mut depth = 0;
-        let mut parent = self.nodes[n].parent;
-        while parent != self.root {
+        let mut n = n;
+        while let Some(parent) = self[n].parent {
             depth += 1;
-            parent = self.nodes[parent].parent;
+            n = parent;
         }
         depth
     }
 
-    pub fn topological_depth(&self) -> (usize, i64) {
+    pub fn topological_depth(&self) -> (NodeID, i64) {
         self.leaves()
             .map(|n| (n, self.node_topological_depth(n)))
             .max_by(|x, y| x.1.partial_cmp(&y.1).unwrap())
             .unwrap()
     }
 
-    pub fn leaves<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
-        (0..self.nodes.len()).filter(move |n| self.nodes[*n].is_leaf())
+    pub fn leaves<'a>(&'a self) -> impl Iterator<Item = NodeID> + 'a {
+        self.nodes
+            .iter()
+            .filter(|(_, n)| n.is_leaf())
+            .map(|(i, _)| i)
+            .copied()
     }
 
     pub fn map_leaves<F: FnMut(&mut Node<P>)>(&mut self, f: &mut F) {
         self.nodes
-            .iter_mut()
+            .values_mut()
             .filter(|n| n.is_leaf())
             .for_each(|n| f(n));
     }
 
-    pub fn inners<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
-        (0..self.nodes.len()).filter(move |n| !self.nodes[*n].is_leaf())
+    pub fn inners<'a>(&'a self) -> impl Iterator<Item = NodeID> + 'a {
+        (0..self.nodes.len()).filter(move |n| !self.nodes[n].is_leaf())
     }
 
     pub fn to_newick<ID: Fn(&P) -> S, S: AsRef<str>>(&self, node_to_id: ID) -> String {
         fn fmt_node<PP, ID: Fn(&PP) -> S, S: AsRef<str>>(
             t: &Tree<PP>,
-            n: usize,
+            n: NodeID,
             r: &mut String,
             node_to_id: &ID,
         ) {
@@ -294,15 +318,19 @@ impl<P> Tree<P> {
         r.push(';');
         r
     }
+
+    fn get_mut(&mut self, i: NodeID) -> Option<&mut Node<P>> {
+        self.nodes.get_mut(&i)
+    }
 }
 impl<P> std::ops::Index<usize> for Tree<P> {
     type Output = Node<P>;
     fn index(&self, i: usize) -> &Self::Output {
-        &self.nodes[i]
+        &self.nodes[&i]
     }
 }
 impl<P> std::ops::IndexMut<usize> for Tree<P> {
     fn index_mut(&mut self, i: usize) -> &mut Self::Output {
-        &mut self.nodes[i]
+        self.nodes.get_mut(&i).unwrap()
     }
 }
