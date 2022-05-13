@@ -24,6 +24,12 @@ pub struct Tree<P> {
     _spans: HashMap<NodeID, Vec<NodeID>>,
 }
 
+impl<P> Default for Tree<P> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<P> Tree<P> {
     pub fn new() -> Self {
         Self {
@@ -80,10 +86,10 @@ impl<P> Tree<P> {
         self.insert_node(
             parent,
             Node {
-                parent: parent,
+                parent,
                 children: vec![],
                 branch_length: None,
-                data: data,
+                data,
             },
         )
     }
@@ -118,32 +124,28 @@ impl<P> Tree<P> {
     where
         F: Fn(&P) -> bool,
     {
-        match self
+        self
             .nodes
             .iter()
             .filter(|(_, n)| n.is_leaf())
             .find(|(_i, n)| f(&n.data))
-        {
-            Some((i, _)) => Some(*i),
-            None => None,
-        }
+            .map(|(i, _)| *i)
     }
 
     pub fn find_node<F>(&self, f: F) -> Option<NodeID>
     where
         F: Fn(&P) -> bool,
     {
-        match self.nodes.iter().find(|(_i, n)| f(&n.data)) {
-            Some((i, _)) => Some(*i),
-            None => None,
-        }
+        self.nodes
+            .iter()
+            .find(|(_i, n)| f(&n.data))
+            .map(|(i, _)| *i)
     }
 
     pub fn mrca<'a>(&self, nodes: impl IntoIterator<Item = &'a NodeID>) -> Option<NodeID> {
-        let first;
         let mut nodes = nodes.into_iter();
-        if let Some(node) = nodes.next() {
-            first = *node;
+        let first = if let Some(node) = nodes.next() {
+            *node
         } else {
             return None;
         };
@@ -157,12 +159,12 @@ impl<P> Tree<P> {
         let mut checked = HashSet::<NodeID>::from_iter(ancestors.iter().copied());
         let mut oldest: NodeID = 0;
 
-        while let Some(species) = nodes.next() {
+        for species in nodes {
             let mut species: NodeID = *species;
             while !checked.contains(&species) {
                 checked.insert(species);
                 species = self.nodes[&species].parent.unwrap();
-                oldest = oldest.max(*ranks.get(&species).unwrap_or(&&0));
+                oldest = oldest.max(*ranks.get(&species).unwrap_or(&0));
             }
         }
 
@@ -269,7 +271,7 @@ impl<P> Tree<P> {
             .unwrap()
     }
 
-    pub fn leaves<'a>(&'a self) -> impl Iterator<Item = NodeID> + 'a {
+    pub fn leaves(&self) -> impl Iterator<Item = NodeID> + '_ {
         self.nodes
             .iter()
             .filter(|(_, n)| n.is_leaf())
@@ -278,13 +280,10 @@ impl<P> Tree<P> {
     }
 
     pub fn map_leaves<F: FnMut(&mut Node<P>)>(&mut self, f: &mut F) {
-        self.nodes
-            .values_mut()
-            .filter(|n| n.is_leaf())
-            .for_each(|n| f(n));
+        self.nodes.values_mut().filter(|n| n.is_leaf()).for_each(f);
     }
 
-    pub fn inners<'a>(&'a self) -> impl Iterator<Item = NodeID> + 'a {
+    pub fn inners(&self) -> impl Iterator<Item = NodeID> + '_ {
         (0..self.nodes.len()).filter(move |n| !self.nodes[n].is_leaf())
     }
 
@@ -297,7 +296,9 @@ impl<P> Tree<P> {
         ) {
             if t[n].is_leaf() {
                 r.push_str(node_to_id(&t[n].data).as_ref());
-                t[n].branch_length.map(|l| r.push_str(&format!(":{}", l)));
+                if let Some(l) = t[n].branch_length {
+                    r.push_str(&format!(":{}", l));
+                }
             } else {
                 r.push('(');
 
@@ -310,7 +311,9 @@ impl<P> Tree<P> {
                 }
                 r.push(')');
                 r.push_str(node_to_id(&t[n].data).as_ref());
-                t[n].branch_length.map(|l| r.push_str(&format!(":{}", l)));
+                if let Some(l) = t[n].branch_length {
+                    r.push_str(&format!(":{}", l));
+                }
             }
         }
         let mut r = String::new();
