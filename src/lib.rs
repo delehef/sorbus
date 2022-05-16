@@ -75,6 +75,10 @@ impl<P> Tree<P> {
         if let Some(parent) = parent {
             self.nodes.get_mut(&parent).unwrap().children.push(id);
         }
+
+        if self.nodes.len() == 1 {
+            self.root = id;
+        }
         id
     }
 
@@ -124,8 +128,7 @@ impl<P> Tree<P> {
     where
         F: Fn(&P) -> bool,
     {
-        self
-            .nodes
+        self.nodes
             .iter()
             .filter(|(_, n)| n.is_leaf())
             .find(|(_i, n)| f(&n.data))
@@ -284,7 +287,7 @@ impl<P> Tree<P> {
     }
 
     pub fn inners(&self) -> impl Iterator<Item = NodeID> + '_ {
-        (0..self.nodes.len()).filter(move |n| !self.nodes[n].is_leaf())
+        self.nodes.keys().filter(move |n| !self.nodes[n].is_leaf()).copied()
     }
 
     pub fn to_newick<ID: Fn(&P) -> S, S: AsRef<str>>(&self, node_to_id: ID) -> String {
