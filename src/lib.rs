@@ -22,6 +22,7 @@ pub struct Tree<P> {
     current_id: NodeID,
     nodes: HashMap<NodeID, Node<P>>,
     _spans: HashMap<NodeID, Vec<NodeID>>,
+    _descendants: HashMap<NodeID, Vec<NodeID>>,
 }
 
 impl<P> Default for Tree<P> {
@@ -37,6 +38,7 @@ impl<P> Tree<P> {
             current_id: 0,
             nodes: HashMap::new(),
             _spans: HashMap::new(),
+            _descendants: HashMap::new(),
         }
     }
 
@@ -213,9 +215,9 @@ impl<P> Tree<P> {
         let mut r = Vec::new();
         let mut parent = Some(n);
 
-        while let Some(species) = parent {
-            r.push(species);
-            parent = self.parent(species);
+        while let Some(me) = parent {
+            r.push(me);
+            parent = self.parent(me);
         }
 
         r
@@ -252,14 +254,46 @@ impl<P> Tree<P> {
         r
     }
 
-    pub fn cached_leaves_of(&self, n: NodeID) -> &[NodeID] {
-        &self._spans[&n]
+    pub fn cache_descendants(&mut self) {
+        let mut me = self.root;
+        let todo = self.descendants(me);
+        self._descendants.insert(me, todo.to_owned());
+        for n in todo {
+            self._descendants.insert(n, self.descendants(n));
+        }
+        while let Some(parent) = self[me].parent {
+            self._descendants
+                .insert(parent, self.descendants(parent));
+            me = parent;
+        }
+    }
+
+    pub fn cache_descendants_of(&mut self, from: NodeID) {
+        let mut me = from;
+        let todo = self.descendants(me);
+        self._descendants.insert(me, todo.to_owned());
+        for n in todo {
+            self._descendants.insert(n, self.descendants(n));
+        }
+        while let Some(parent) = self[me].parent {
+            self._descendants
+                .insert(parent, self.descendants(parent));
+            me = parent;
+        }
+    }
+
+    pub fn cached_descendants(&self, n: NodeID) -> Option<&Vec<NodeID>> {
+        self._descendants.get(&n)
     }
 
     pub fn cache_leaves(&mut self) {
         for &k in self.nodes.keys() {
             self._spans.insert(k, self.leaves_of(k));
         }
+    }
+
+    pub fn cached_leaves_of(&self, n: NodeID) -> &[NodeID] {
+        &self._spans[&n]
     }
 
     pub fn children(&self, n: NodeID) -> &[NodeID] {
