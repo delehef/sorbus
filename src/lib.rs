@@ -69,11 +69,13 @@ impl<P> Tree<P> {
     }
 
     fn insert_node(&mut self, parent: Option<NodeID>, n: Node<P>) -> NodeID {
-        self.current_id += 1;
+        self.current_id = self.current_id.checked_add(1).expect("Tree is too big");
         let id = self.current_id;
+        assert!(!self.nodes.contains_key(&id), "{} already exists", id);
+        assert!(parent.is_none() || self.nodes.contains_key(&parent.unwrap()));
         self.nodes.insert(id, n);
         if let Some(parent) = parent {
-            self.nodes.get_mut(&parent).unwrap().children.push(id);
+            self[parent].children.push(id);
         }
 
         if self.nodes.len() == 1 {
@@ -98,8 +100,41 @@ impl<P> Tree<P> {
         )
     }
 
+    pub fn plug(&mut self, target: NodeID, n: NodeID) {
+        assert!(self.nodes[&n].parent.is_none());
+        assert!(!self.nodes[&target].children.contains(&n));
+        self.nodes.get_mut(&n).unwrap().parent = Some(target);
+        self.nodes.get_mut(&target).unwrap().children.push(n)
+    }
+
+    pub fn unplug(&mut self, n: NodeID) {
+        let parent = self.nodes[&n].parent;
+        assert!(parent.is_none() || self.nodes[&parent.unwrap()].children.contains(&n));
+
+        self.nodes.get_mut(&n).unwrap().parent = None;
+        if let Some(parent) = parent {
+            self.nodes
+                .get_mut(&parent)
+                .unwrap()
+                .children
+                .retain(|nn| *nn != n);
+        }
+    }
+
     pub fn delete_node(&mut self, n: NodeID) -> Option<()> {
-        self.nodes.remove_entry(&n).map(|_| ())
+        assert!(self.nodes.contains_key(&n));
+        for c in self[n].children.clone().into_iter() {
+            self.delete_node(c);
+        }
+        self.unplug(n);
+        self.nodes.remove(&n).map(|_| ())
+    }
+
+    pub fn delete_nodes(&mut self, ns: &[NodeID]) -> Option<()>{
+        for n in ns {
+            self.delete_node(*n)?;
+        }
+        Some(())
     }
 
     fn print_node<F: Fn(&P) -> S, S: AsRef<str>>(nodes: &[&Node<P>], n: NodeID, o: NodeID, f: &F) {
@@ -287,7 +322,10 @@ impl<P> Tree<P> {
     }
 
     pub fn inners(&self) -> impl Iterator<Item = NodeID> + '_ {
-        self.nodes.keys().filter(move |n| !self.nodes[n].is_leaf()).copied()
+        self.nodes
+            .keys()
+            .filter(move |n| !self.nodes[n].is_leaf())
+            .copied()
     }
 
     pub fn to_newick<ID: Fn(&P) -> S, S: AsRef<str>>(&self, node_to_id: ID) -> String {
