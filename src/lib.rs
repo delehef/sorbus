@@ -132,7 +132,7 @@ impl<P> Tree<P> {
         self.nodes.remove(&n).map(|_| ())
     }
 
-    pub fn delete_nodes(&mut self, ns: &[NodeID]) -> Option<()>{
+    pub fn delete_nodes(&mut self, ns: &[NodeID]) -> Option<()> {
         for n in ns {
             self.delete_node(*n)?;
         }
@@ -262,8 +262,7 @@ impl<P> Tree<P> {
             self._descendants.insert(n, self.descendants(n));
         }
         while let Some(parent) = self[me].parent {
-            self._descendants
-                .insert(parent, self.descendants(parent));
+            self._descendants.insert(parent, self.descendants(parent));
             me = parent;
         }
     }
@@ -276,8 +275,7 @@ impl<P> Tree<P> {
             self._descendants.insert(n, self.descendants(n));
         }
         while let Some(parent) = self[me].parent {
-            self._descendants
-                .insert(parent, self.descendants(parent));
+            self._descendants.insert(parent, self.descendants(parent));
             me = parent;
         }
     }
