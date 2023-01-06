@@ -139,6 +139,10 @@ impl<P> Tree<P> {
         Some(())
     }
 
+    pub fn move_node(&mut self, n: NodeID, dest: NodeID) {
+        self.unplug(n);
+        self.plug(dest, n);
+    }
 
     fn print_node<F: Fn(&P) -> S, S: Default + std::fmt::Display>(
         nodes: &[&Node<P>],
