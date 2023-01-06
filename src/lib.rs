@@ -398,6 +398,54 @@ impl<P> Tree<P> {
     fn get_mut(&mut self, i: NodeID) -> Option<&mut Node<P>> {
         self.nodes.get_mut(&i)
     }
+
+    pub fn prune(&mut self) {
+        // Remove empty inner nodes (i.e. nodes without content nor children)
+        loop {
+            let todos = tree
+                .nodes()
+                .copied()
+                .filter(|&k| tree[k].children.is_empty() && tree[k].content.is_empty())
+                .collect::<Vec<_>>();
+            if todos.is_empty() {
+                break;
+            } else {
+                tree.delete_nodes(&todos);
+            }
+        }
+
+        // Compress redundant outer nodes (i.e. nodes with a single content and no child)
+        loop {
+            let todo = tree
+                .nodes()
+                .copied()
+                .find(|&k| tree[k].children.is_empty() && tree[k].content.len() == 1 && k != root);
+
+            if let Some(k) = todo {
+                let content = tree[k].content[0];
+                let parent = tree[k].parent.unwrap();
+                tree[parent].content.push(content);
+                tree.delete_node(k);
+            } else {
+                break;
+            }
+        }
+
+        // Compress redundant inner nodes (i.e. nodes with a single child and no content)
+        loop {
+            let todo = tree
+                .nodes()
+                .copied()
+                .find(|&k| k != root && tree[k].children.len() == 1 && tree[k].content.is_empty());
+
+            if let Some(k) = todo {
+                tree.move_node(tree[k].children[0], tree[k].parent.unwrap());
+                tree.delete_node(k);
+            } else {
+                break;
+            }
+        }
+    }
 }
 impl<P> std::ops::Index<usize> for Tree<P> {
     type Output = Node<P>;
