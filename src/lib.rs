@@ -6,7 +6,7 @@ pub struct Node<T> {
     parent: Option<NodeID>,
     children: Vec<NodeID>,
     pub branch_length: Option<f32>,
-    pub data: T,
+    pub data: Option<T>,
 }
 impl<T> Node<T> {
     pub fn is_leaf(&self) -> bool {
@@ -86,7 +86,7 @@ impl<P> Tree<P> {
         id
     }
 
-    pub fn add_node(&mut self, parent: Option<NodeID>, data: P) -> NodeID {
+    pub fn add_node(&mut self, parent: Option<NodeID>, data: Option<P>) -> NodeID {
         if let Some(parent) = parent {
             assert!(self.nodes.contains_key(&parent));
         }
@@ -139,11 +139,17 @@ impl<P> Tree<P> {
         Some(())
     }
 
-    fn print_node<F: Fn(&P) -> S, S: AsRef<str>>(nodes: &[&Node<P>], n: NodeID, o: NodeID, f: &F) {
+
+    fn print_node<F: Fn(&P) -> S, S: Default + std::fmt::Display>(
+        nodes: &[&Node<P>],
+        n: NodeID,
+        o: NodeID,
+        f: &F,
+    ) {
         println!(
             "{}{}:{:?}",
             str::repeat(" ", o),
-            f(&nodes[n].data).as_ref(),
+            nodes[n].data.as_ref().map(f).unwrap_or_default(),
             nodes[n].branch_length.unwrap_or(-1.),
         );
         nodes[n]
@@ -151,7 +157,7 @@ impl<P> Tree<P> {
             .iter()
             .for_each(|c| Tree::<P>::print_node(nodes, *c, o + 2, f))
     }
-    pub fn print<F: Fn(&P) -> S, S: AsRef<str>>(&self, f: F) {
+    pub fn print<F: Fn(&P) -> S, S: Default + std::fmt::Display>(&self, f: F) {
         if !self.nodes.is_empty() {
             Tree::<P>::print_node(&self.nodes.values().collect::<Vec<_>>(), self.root, 0, &f);
         }
@@ -168,7 +174,7 @@ impl<P> Tree<P> {
         self.nodes
             .iter()
             .filter(|(_, n)| n.is_leaf())
-            .find(|(_i, n)| f(&n.data))
+            .find(|(_i, n)| n.data.as_ref().map(&f).unwrap_or(false))
             .map(|(i, _)| *i)
     }
 
@@ -178,7 +184,7 @@ impl<P> Tree<P> {
     {
         self.nodes
             .iter()
-            .find(|(_i, n)| f(&n.data))
+            .find(|(_i, n)| n.data.as_ref().map(&f).unwrap_or(false))
             .map(|(i, _)| *i)
     }
 
@@ -360,15 +366,25 @@ impl<P> Tree<P> {
             .copied()
     }
 
-    pub fn to_newick<ID: Fn(&P) -> S, S: AsRef<str>>(&self, node_to_id: ID) -> String {
-        fn fmt_node<PP, ID: Fn(&PP) -> S, S: AsRef<str>>(
+    pub fn to_newick<ID: Fn(&P) -> S, S: std::fmt::Display + Default>(
+        &self,
+        node_to_id: ID,
+    ) -> String {
+        fn fmt_node<PP, Render: Fn(&PP) -> S, S: std::fmt::Display + Default>(
             t: &Tree<PP>,
             n: NodeID,
             r: &mut String,
-            node_to_id: &ID,
+            formatter: &Render,
         ) {
             if t[n].is_leaf() {
-                r.push_str(node_to_id(&t[n].data).as_ref());
+                r.push_str(
+                    &t[n]
+                        .data
+                        .as_ref()
+                        .map(formatter)
+                        .unwrap_or_default()
+                        .to_string(),
+                );
                 if let Some(l) = t[n].branch_length {
                     r.push_str(&format!(":{}", l));
                 }
@@ -377,13 +393,20 @@ impl<P> Tree<P> {
 
                 let mut children = t[n].children().iter().peekable();
                 while let Some(c) = children.next() {
-                    fmt_node(t, *c, r, node_to_id);
+                    fmt_node(t, *c, r, formatter);
                     if children.peek().is_some() {
                         r.push_str(",\n");
                     }
                 }
                 r.push(')');
-                r.push_str(node_to_id(&t[n].data).as_ref());
+                r.push_str(
+                    &t[n]
+                        .data
+                        .as_ref()
+                        .map(formatter)
+                        .unwrap_or_default()
+                        .to_string(),
+                );
                 if let Some(l) = t[n].branch_length {
                     r.push_str(&format!(":{}", l));
                 }
