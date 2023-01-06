@@ -10,3 +10,9 @@ repository = "https://github.com/delehef/sorbus"
 readme = "README.org"
 
 [dependencies]
+
+[package.metadata.release]
+tag-prefix = ""
+publish = false
+pre-release-hook = ["git-cliff", "-o", "CHANGELOG.md", "--tag", "{{version}}"]
+allow-branch = ["master"]
