@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2023-01-07
+
+### Features
+
+- Homogeneize `nodes` and `leaves`
+
 ## [0.7.0] - 2023-01-06
 
 ### Features
@@ -13,6 +19,7 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous Tasks
 
 - Add nix files
+- Release sorbus version 0.7.0
 
 ## [0.6.0] - 2023-01-06
 
