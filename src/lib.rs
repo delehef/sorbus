@@ -54,8 +54,16 @@ impl<P> Tree<P> {
         self.root == n
     }
 
-    pub fn nodes(&self) -> impl Iterator<Item = &Node<P>> {
-        self.nodes.values()
+    pub fn nodes(&self) -> impl Iterator<Item = NodeID> + '_ {
+        self.nodes.keys().cloned()
+    }
+
+    pub fn leaves(&self) -> impl Iterator<Item = NodeID> + '_ {
+        self.nodes
+            .iter()
+            .filter(|(_, n)| n.is_leaf())
+            .map(|(i, _)| i)
+            .copied()
     }
 
     pub fn len(&self) -> NodeID {
@@ -349,14 +357,6 @@ impl<P> Tree<P> {
             .map(|n| (n, self.node_topological_depth(n)))
             .max_by(|x, y| x.1.partial_cmp(&y.1).unwrap())
             .unwrap()
-    }
-
-    pub fn leaves(&self) -> impl Iterator<Item = NodeID> + '_ {
-        self.nodes
-            .iter()
-            .filter(|(_, n)| n.is_leaf())
-            .map(|(i, _)| i)
-            .copied()
     }
 
     pub fn map_leaves<F: FnMut(&mut Node<P>)>(&mut self, f: &mut F) {
