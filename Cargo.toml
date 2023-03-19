@@ -10,6 +10,7 @@ repository = "https://github.com/delehef/sorbus"
 readme = "README.org"
 
 [dependencies]
+identity-hash = "0.1.0"
 
 [package.metadata.release]
 tag-prefix = ""

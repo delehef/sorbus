@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use identity_hash::{IntMap, IntSet};
 
 pub type NodeID = usize;
 
@@ -20,9 +20,9 @@ impl<T> Node<T> {
 pub struct Tree<P> {
     root: NodeID,
     current_id: NodeID,
-    nodes: HashMap<NodeID, Node<P>>,
-    _spans: HashMap<NodeID, Vec<NodeID>>,
-    _descendants: HashMap<NodeID, Vec<NodeID>>,
+    nodes: IntMap<NodeID, Node<P>>,
+    _spans_set: IntMap<NodeID, IntSet<NodeID>>,
+    _descendants: IntMap<NodeID, Vec<NodeID>>,
 }
 
 impl<P> Default for Tree<P> {
@@ -36,9 +36,9 @@ impl<P> Tree<P> {
         Self {
             root: 0,
             current_id: 0,
-            nodes: HashMap::new(),
-            _spans: HashMap::new(),
-            _descendants: HashMap::new(),
+            nodes: Default::default(),
+            _spans_set: Default::default(),
+            _descendants: Default::default(),
         }
     }
 
@@ -200,10 +200,10 @@ impl<P> Tree<P> {
             .map(|(i, _)| *i)
     }
 
-    pub fn mrca<'a>(&self, nodes: impl IntoIterator<Item = &'a NodeID>) -> Option<NodeID> {
+    pub fn mrca<'a>(&self, nodes: impl IntoIterator<Item = NodeID>) -> Option<NodeID> {
         let mut nodes = nodes.into_iter();
         let first = if let Some(node) = nodes.next() {
-            *node
+            node
         } else {
             return None;
         };
@@ -211,14 +211,15 @@ impl<P> Tree<P> {
         let ancestors = self.ascendance(first);
         let ranks = ancestors
             .iter()
+            .copied()
             .enumerate()
             .map(|(i, j)| (j, i))
-            .collect::<HashMap<_, _>>();
-        let mut checked = HashSet::<NodeID>::from_iter(ancestors.iter().copied());
+            .collect::<IntMap<_, _>>();
+        let mut checked = IntSet::<NodeID>::from_iter(ancestors.iter().copied());
         let mut oldest: NodeID = 0;
 
         for species in nodes {
-            let mut species: NodeID = *species;
+            let mut species: NodeID = species;
             while !checked.contains(&species) {
                 checked.insert(species);
                 species = self.nodes[&species].parent.unwrap();
@@ -256,10 +257,10 @@ impl<P> Tree<P> {
         r
     }
 
-    pub fn leaves_of(&self, n: NodeID) -> Vec<NodeID> {
-        fn find_descendants_leaves<PP>(t: &Tree<PP>, n: NodeID, ax: &mut Vec<NodeID>) {
+    pub fn leave_set_of(&self, n: NodeID) -> IntSet<NodeID> {
+        fn find_descendants_leaves<PP>(t: &Tree<PP>, n: NodeID, ax: &mut IntSet<NodeID>) {
             if t[n].is_leaf() {
-                ax.push(n);
+                ax.insert(n);
             } else {
                 for &c in t[n].children.iter() {
                     find_descendants_leaves(t, c, ax);
@@ -267,9 +268,13 @@ impl<P> Tree<P> {
             }
         }
 
-        let mut r = vec![];
+        let mut r = Default::default();
         find_descendants_leaves(self, n, &mut r);
         r
+    }
+
+    pub fn leaves_of(&self, n: NodeID) -> Vec<NodeID> {
+        self.leave_set_of(n).into_iter().collect()
     }
 
     pub fn cache_descendants(&mut self) {
@@ -304,12 +309,18 @@ impl<P> Tree<P> {
 
     pub fn cache_leaves(&mut self) {
         for &k in self.nodes.keys() {
-            self._spans.insert(k, self.leaves_of(k));
+            self._spans_set.insert(k, self.leave_set_of(k));
         }
     }
 
-    pub fn cached_leaves_of(&self, n: NodeID) -> &[NodeID] {
-        &self._spans[&n]
+    pub fn cached_leaves_of(&self, n: NodeID) -> &IntSet<NodeID> {
+        &self._spans_set[&n]
+    }
+
+    pub fn cached_leaves_of_vec(&self, n: NodeID) -> Vec<NodeID> {
+        let mut r = Vec::with_capacity(self._spans_set[&n].len());
+        r.extend(self._spans_set[&n].iter().copied());
+        r
     }
 
     pub fn children(&self, n: NodeID) -> &[NodeID] {
