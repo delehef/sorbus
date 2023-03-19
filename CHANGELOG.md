@@ -2,11 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1] - 2023-03-19
+
+### Performance
+
+- Use a specialized map/set library
+
 ## [0.8.0] - 2023-01-07
 
 ### Features
 
 - Homogeneize `nodes` and `leaves`
+
+### Miscellaneous Tasks
+
+- Release sorbus version 0.8.0
 
 ## [0.7.0] - 2023-01-06
 
