@@ -2,44 +2,104 @@ use identity_hash::{IntMap, IntSet};
 
 pub type NodeID = usize;
 
-pub struct Node<T> {
+pub struct Node<P> {
     parent: Option<NodeID>,
     children: Vec<NodeID>,
     pub branch_length: Option<f32>,
-    pub data: Option<T>,
+    data: Option<P>,
 }
-impl<T> Node<T> {
+impl<P> Node<P> {
     pub fn is_leaf(&self) -> bool {
         self.children.is_empty()
     }
     pub fn children(&self) -> &[NodeID] {
         &self.children
     }
+
+    pub fn data(&self) -> Option<&P> {
+        self.data.as_ref()
+    }
+
+    pub fn data_mut(&mut self) -> Option<&mut P> {
+        self.data.as_mut()
+    }
+
+    pub fn unwrap_data(&self) -> &P {
+        self.data.as_ref().unwrap()
+    }
+
+    pub fn unwrap_data_mut(&mut self) -> &mut P {
+        self.data.as_mut().unwrap()
+    }
 }
 
-pub struct Tree<P> {
+pub struct Tree<P, D> {
     root: NodeID,
     current_id: NodeID,
+    metadata: D,
     nodes: IntMap<NodeID, Node<P>>,
     _spans_set: IntMap<NodeID, IntSet<NodeID>>,
     _descendants: IntMap<NodeID, Vec<NodeID>>,
 }
 
-impl<P> Default for Tree<P> {
+impl<P, D> Default for Tree<P, D>
+where
+    D: Default,
+{
     fn default() -> Self {
-        Self::new()
+        Self::with_metadata(D::default())
     }
 }
-
-impl<P> Tree<P> {
+impl<P, D> Tree<P, D>
+where
+    D: Default,
+{
     pub fn new() -> Self {
         Self {
             root: 0,
+            current_id: 0,
+            metadata: D::default(),
+            nodes: Default::default(),
+            _spans_set: Default::default(),
+            _descendants: Default::default(),
+        }
+    }
+}
+
+impl<P, D> Tree<P, D> {
+    pub fn with_metadata(metadata: D) -> Self {
+        Self {
+            root: 0,
+            metadata,
             current_id: 0,
             nodes: Default::default(),
             _spans_set: Default::default(),
             _descendants: Default::default(),
         }
+    }
+
+    pub fn metadata(&self) -> &D {
+        &self.metadata
+    }
+
+    pub fn metadata_mut(&mut self) -> &mut D {
+        &mut self.metadata
+    }
+
+    pub fn data(&self, n: NodeID) -> Option<&P> {
+        self[n].data.as_ref()
+    }
+
+    pub fn data_mut(&mut self, n: NodeID) -> Option<&mut P> {
+        self[n].data.as_mut()
+    }
+
+    pub fn unwrap_data(&self, n: NodeID) -> &P {
+        self[n].data.as_ref().unwrap()
+    }
+
+    pub fn unwrap_data_mut(&mut self, n: NodeID) -> &mut P {
+        self[n].data.as_mut().unwrap()
     }
 
     pub fn set_root(&mut self, new_root: NodeID) {
@@ -153,25 +213,28 @@ impl<P> Tree<P> {
     }
 
     fn print_node<F: Fn(&P) -> S, S: Default + std::fmt::Display>(
-        nodes: &[&Node<P>],
+        &self,
         n: NodeID,
-        o: NodeID,
+        indent: NodeID,
         f: &F,
     ) {
         println!(
-            "{}{}:{:?}",
-            str::repeat(" ", o),
-            nodes[n].data.as_ref().map(f).unwrap_or_default(),
-            nodes[n].branch_length.unwrap_or(-1.),
+            "{}{}{}",
+            str::repeat(" ", indent),
+            self[n].data.as_ref().map(f).unwrap_or_default(),
+            self[n]
+                .branch_length
+                .map(|x| format!(":{}", x))
+                .unwrap_or(String::new()),
         );
-        nodes[n]
+        self[n]
             .children
             .iter()
-            .for_each(|c| Tree::<P>::print_node(nodes, *c, o + 2, f))
+            .for_each(|c| self.print_node(*c, indent + 2, f))
     }
     pub fn print<F: Fn(&P) -> S, S: Default + std::fmt::Display>(&self, f: F) {
         if !self.nodes.is_empty() {
-            Tree::<P>::print_node(&self.nodes.values().collect::<Vec<_>>(), self.root, 0, &f);
+            self.print_node(self.root, 0, &f);
         }
     }
 
@@ -198,6 +261,16 @@ impl<P> Tree<P> {
             .iter()
             .find(|(_i, n)| n.data.as_ref().map(&f).unwrap_or(false))
             .map(|(i, _)| *i)
+    }
+
+    pub fn find_child<F>(&self, n: NodeID, f: F) -> Option<NodeID>
+    where
+        F: Fn(&P) -> bool,
+    {
+        self.children(n)
+            .iter()
+            .cloned()
+            .find(|n| self.data(*n).map(&f).unwrap_or(false))
     }
 
     pub fn mrca<'a>(&self, nodes: impl IntoIterator<Item = NodeID>) -> Option<NodeID> {
@@ -243,7 +316,7 @@ impl<P> Tree<P> {
     }
 
     pub fn descendants(&self, n: NodeID) -> Vec<NodeID> {
-        fn find_descendants<PP>(t: &Tree<PP>, n: NodeID, ax: &mut Vec<NodeID>) {
+        fn find_descendants<PP, DD>(t: &Tree<PP, DD>, n: NodeID, ax: &mut Vec<NodeID>) {
             ax.push(n);
             for &c in t[n].children.iter() {
                 find_descendants(t, c, ax);
@@ -258,7 +331,7 @@ impl<P> Tree<P> {
     }
 
     pub fn leave_set_of(&self, n: NodeID) -> IntSet<NodeID> {
-        fn find_descendants_leaves<PP>(t: &Tree<PP>, n: NodeID, ax: &mut IntSet<NodeID>) {
+        fn find_descendants_leaves<PP, DD>(t: &Tree<PP, DD>, n: NodeID, ax: &mut IntSet<NodeID>) {
             if t[n].is_leaf() {
                 ax.insert(n);
             } else {
@@ -385,8 +458,8 @@ impl<P> Tree<P> {
         &self,
         node_to_id: ID,
     ) -> String {
-        fn fmt_node<PP, Render: Fn(&PP) -> S, S: std::fmt::Display + Default>(
-            t: &Tree<PP>,
+        fn fmt_node<PP, DD, Render: Fn(&PP) -> S, S: std::fmt::Display + Default>(
+            t: &Tree<PP, DD>,
             n: NodeID,
             r: &mut String,
             formatter: &Render,
@@ -467,13 +540,13 @@ impl<P> Tree<P> {
         });
     }
 }
-impl<P> std::ops::Index<usize> for Tree<P> {
+impl<P, D> std::ops::Index<usize> for Tree<P, D> {
     type Output = Node<P>;
     fn index(&self, i: usize) -> &Self::Output {
         &self.nodes[&i]
     }
 }
-impl<P> std::ops::IndexMut<usize> for Tree<P> {
+impl<P, D> std::ops::IndexMut<usize> for Tree<P, D> {
     fn index_mut(&mut self, i: usize) -> &mut Self::Output {
         self.nodes.get_mut(&i).unwrap()
     }
