@@ -43,6 +43,26 @@ impl<Payload, Edge> Node<Payload, Edge> {
     pub fn data_mut(&mut self) -> Option<&mut Payload> {
         self.data.as_mut()
     }
+
+    /// Set the [`Payload`] of this [`Node`]
+    pub fn set_data(&mut self, e: Payload) {
+        self.data = Some(e)
+    }
+
+    /// Returns a reference to this node parent branch [`Edge`]
+    pub fn branch(&self) -> Option<&Edge> {
+        self.branch.as_ref()
+    }
+
+    /// Set the [`Edge`] of this node parent branch
+    pub fn set_branch(&mut self, e: Edge) {
+        self.branch = Some(e)
+    }
+
+    /// Unset the [`Edge`] of this node parent branch
+    pub fn unset_branch(&mut self) {
+        self.branch = None
+    }
 }
 
 pub struct Tree<Payload, MetaData, Edge> {
@@ -54,19 +74,12 @@ pub struct Tree<Payload, MetaData, Edge> {
     _descendants: IntMap<NodeID, Vec<NodeID>>,
 }
 
-impl<P, D, E> Default for Tree<P, D, E>
-where
-    D: Default,
-{
+impl<P, D: Default, E> Default for Tree<P, D, E> {
     fn default() -> Self {
         Self::with_metadata(D::default())
     }
 }
-
-impl<P, D, E> Tree<P, D, E>
-where
-    D: Default,
-{
+impl<P, D: Default, E> Tree<P, D, E> {
     pub fn new() -> Self {
         Self {
             root: 0,
@@ -78,7 +91,6 @@ where
         }
     }
 }
-
 impl<P, D, E> Tree<P, D, E> {
     pub fn with_metadata(metadata: D) -> Self {
         Self {
@@ -540,6 +552,53 @@ impl<P, D, E> Tree<P, D, E> {
             (n.children().is_empty() && n.data.is_none())
                 || (n.children().len() == 1 && n.data.is_none())
         });
+    }
+
+    fn rec_sort_by<K: Ord + Clone + std::fmt::Debug>(
+        &mut self,
+        n: NodeID,
+        k: &impl Fn(Option<&P>) -> K,
+    ) -> K {
+        let mut children = self[n].children.clone();
+        children.sort_by_cached_key(|c| k(self[*c].data()));
+
+        let keys = children
+            .iter()
+            .map(|c| self.rec_sort_by(*c, k))
+            .collect::<Vec<_>>();
+        dbg!(&keys);
+
+        self[n].children = children;
+        if self[n].data.is_some() {
+            k(self[n].data.as_ref())
+        } else if !self[n].children.is_empty() {
+            keys[0].clone()
+        } else {
+            panic!("found a node without neither payload nor children")
+        }
+    }
+    pub fn sort_by<K: std::fmt::Debug + Ord + Clone>(&mut self, k: impl Fn(Option<&P>) -> K) {
+        let _ = self.rec_sort_by(self.root(), &k);
+    }
+}
+impl<'a, P: Ord + Clone, D, E> Tree<P, D, E> {
+    fn rec_sort(&'a mut self, n: NodeID) -> P {
+        let children = self[n].children.clone();
+        let keys = children
+            .iter()
+            .map(|c| self.rec_sort(*c))
+            .collect::<Vec<_>>();
+
+        if self[n].data.is_some() {
+            self[n].data.as_ref().cloned().unwrap()
+        } else if !self[n].children.is_empty() {
+            keys[0].clone()
+        } else {
+            panic!("found a node without neither payload nor children")
+        }
+    }
+    pub fn sort(&'a mut self) {
+        let _ = self.rec_sort(self.root());
     }
 }
 impl<P, D, E> std::ops::Index<NodeID> for Tree<P, D, E> {
