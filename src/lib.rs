@@ -21,7 +21,7 @@ pub struct Node<Payload, Edge, Children = Vec<NodeID>> {
     parent: Option<NodeID>,
     children: Children,
     branch: Option<Edge>,
-    data: Option<Payload>,
+    data: Payload,
 }
 impl<Payload, Edge> Node<Payload, Edge> {
     /// Return `true` if this node has no children.
@@ -35,18 +35,18 @@ impl<Payload, Edge> Node<Payload, Edge> {
     }
 
     /// If this node has a `Payload`, returns a reference to it
-    pub fn data(&self) -> Option<&Payload> {
-        self.data.as_ref()
+    pub fn data(&self) -> &Payload {
+        &self.data
     }
 
     /// If this node has a `Payload`, returns a mutable reference to it
-    pub fn data_mut(&mut self) -> Option<&mut Payload> {
-        self.data.as_mut()
+    pub fn data_mut(&mut self) -> &mut Payload {
+        &mut self.data
     }
 
     /// Set the [`Payload`] of this [`Node`]
     pub fn set_data(&mut self, e: Payload) {
-        self.data = Some(e)
+        self.data = e
     }
 
     /// Returns a reference to this node parent branch [`Edge`]
@@ -112,19 +112,11 @@ impl<P, D, E> Tree<P, D, E> {
     }
 
     pub fn get(&self, n: NodeID) -> Result<&Node<P, E>, Error> {
-        self.nodes.get(&n).ok_or_else(|| Error::NodeNotFound(n))
+        self.nodes.get(&n).ok_or(Error::NodeNotFound(n))
     }
 
     pub fn get_mut(&mut self, n: NodeID) -> Result<&mut Node<P, E>, Error> {
-        self.nodes.get_mut(&n).ok_or_else(|| Error::NodeNotFound(n))
-    }
-
-    pub fn unwrap_data(&self, n: NodeID) -> &P {
-        self[n].data.as_ref().unwrap()
-    }
-
-    pub fn unwrap_data_mut(&mut self, n: NodeID) -> &mut P {
-        self[n].data.as_mut().unwrap()
+        self.nodes.get_mut(&n).ok_or(Error::NodeNotFound(n))
     }
 
     pub fn set_root(&mut self, new_root: NodeID) {
@@ -179,7 +171,7 @@ impl<P, D, E> Tree<P, D, E> {
         id
     }
 
-    pub fn add_node(&mut self, parent: Option<NodeID>, data: Option<P>) -> NodeID {
+    pub fn add_node(&mut self, parent: Option<NodeID>, data: P) -> NodeID {
         if let Some(parent) = parent {
             assert!(self.nodes.contains_key(&parent));
         }
@@ -252,7 +244,7 @@ impl<P, D, E> Tree<P, D, E> {
         println!(
             "{}{}{}",
             str::repeat(" ", indent),
-            self[n].data.as_ref().map(f).unwrap_or_default(),
+            f(&self[n].data),
             self[n]
                 .branch
                 .as_ref()
@@ -290,7 +282,7 @@ impl<P, D, E> Tree<P, D, E> {
         self.nodes
             .iter()
             .filter(|(_, n)| n.is_leaf())
-            .find(|(_i, n)| n.data.as_ref().map(&f).unwrap_or(false))
+            .find(|(_i, n)| f(&n.data))
             .map(|(i, _)| *i)
     }
 
@@ -300,7 +292,7 @@ impl<P, D, E> Tree<P, D, E> {
     {
         self.nodes
             .iter()
-            .find(|(_i, n)| n.data.as_ref().map(&f).unwrap_or(false))
+            .find(|(_i, n)| f(&n.data))
             .map(|(i, _)| *i)
     }
 
@@ -312,13 +304,10 @@ impl<P, D, E> Tree<P, D, E> {
             .children(n)?
             .iter()
             .cloned()
-            .find(|&n| self[n].data().map(&f).unwrap_or(false)))
+            .find(|&n| f(self[n].data())))
     }
 
-    pub fn mrca<'a>(
-        &self,
-        nodes: impl IntoIterator<Item = NodeID>,
-    ) -> Result<Option<NodeID>, Error> {
+    pub fn mrca(&self, nodes: impl IntoIterator<Item = NodeID>) -> Result<Option<NodeID>, Error> {
         let mut nodes = nodes.into_iter();
         let first = if let Some(node) = nodes.next() {
             node
@@ -479,16 +468,11 @@ impl<P, D, E> Tree<P, D, E> {
     pub fn node_topological_depth(&self, n: NodeID) -> Result<usize, Error> {
         let mut depth = 0;
         let mut n = n;
-        while let Some(parent) = self
-            .nodes
-            .get(&n)
-            .ok_or_else(|| Error::NodeNotFound(n))?
-            .parent
-        {
+        while let Some(parent) = self.nodes.get(&n).ok_or(Error::NodeNotFound(n))?.parent {
             depth += 1;
             n = parent;
         }
-        Ok(n)
+        Ok(depth)
     }
 
     pub fn topological_depth(&self) -> (NodeID, usize) {
@@ -526,12 +510,7 @@ impl<P, D, E> Tree<P, D, E> {
 
     pub fn prune_by<U: Fn(&Node<P, E>) -> bool>(&mut self, is_useless: &U) {
         loop {
-            let todo = self
-                .nodes
-                .keys()
-                .cloned()
-                .filter(|k| is_useless(&self[*k]))
-                .next();
+            let todo = self.nodes.keys().cloned().find(|k| is_useless(&self[*k]));
 
             if let Some(k) = todo {
                 let children = self[k].children().to_vec();
@@ -547,58 +526,57 @@ impl<P, D, E> Tree<P, D, E> {
 
     // Remove empty inner nodes (i.e. nodes without content nor children)
     // and compress redundant inner nodes (i.e. nodes with a single child and no content)
-    pub fn prune(&mut self) {
+    pub fn prune(&mut self, is_empty: impl Fn(&P) -> bool) {
         self.prune_by(&|n: &Node<P, E>| {
-            (n.children().is_empty() && n.data.is_none())
-                || (n.children().len() == 1 && n.data.is_none())
+            (n.children().is_empty() && is_empty(&n.data))
+                || (n.children().len() == 1 && is_empty(&n.data))
         });
     }
 
     fn rec_sort_by<K: Ord + Clone + std::fmt::Debug>(
         &mut self,
         n: NodeID,
-        k: &impl Fn(Option<&P>) -> K,
+        k: &impl Fn(&P) -> K,
+        by_leaves: bool,
     ) -> K {
         let mut children = self[n].children.clone();
         children.sort_by_cached_key(|c| k(self[*c].data()));
-
-        let keys = children
-            .iter()
-            .map(|c| self.rec_sort_by(*c, k))
-            .collect::<Vec<_>>();
-        dbg!(&keys);
-
         self[n].children = children;
-        if self[n].data.is_some() {
-            k(self[n].data.as_ref())
-        } else if !self[n].children.is_empty() {
-            keys[0].clone()
+
+        if by_leaves || self[n].children.is_empty() {
+            k(&self[n].data)
         } else {
-            panic!("found a node without neither payload nor children")
+            k(&self[self[n].children[0]].data)
         }
     }
-    pub fn sort_by<K: std::fmt::Debug + Ord + Clone>(&mut self, k: impl Fn(Option<&P>) -> K) {
-        let _ = self.rec_sort_by(self.root(), &k);
+
+    pub fn sort_by<K: std::fmt::Debug + Ord + Clone>(&mut self, k: impl Fn(&P) -> K) {
+        let _ = self.rec_sort_by(self.root(), &k, false);
+    }
+
+    pub fn sort_leaves_by<K: std::fmt::Debug + Ord + Clone>(&mut self, k: impl Fn(&P) -> K) {
+        let _ = self.rec_sort_by(self.root(), &k, true);
     }
 }
-impl<'a, P: Ord + Clone, D, E> Tree<P, D, E> {
-    fn rec_sort(&'a mut self, n: NodeID) -> P {
-        let children = self[n].children.clone();
-        let keys = children
-            .iter()
-            .map(|c| self.rec_sort(*c))
-            .collect::<Vec<_>>();
+impl<'a, P: Ord, D, E> Tree<P, D, E> {
+    fn rec_sort(&'a mut self, n: NodeID, by_leaves: bool) -> &P {
+        let mut children = self[n].children.clone();
+        children.sort_by_cached_key(|c| self[*c].data());
+        self[n].children = children;
 
-        if self[n].data.is_some() {
-            self[n].data.as_ref().cloned().unwrap()
-        } else if !self[n].children.is_empty() {
-            keys[0].clone()
+        if by_leaves || self[n].children.is_empty() {
+            &self[n].data
         } else {
-            panic!("found a node without neither payload nor children")
+            &self[self[n].children[0]].data
         }
     }
+
     pub fn sort(&'a mut self) {
-        let _ = self.rec_sort(self.root());
+        let _ = self.rec_sort(self.root(), false);
+    }
+
+    pub fn sort_leaves(&'a mut self) {
+        let _ = self.rec_sort(self.root(), true);
     }
 }
 impl<P, D, E> std::ops::Index<NodeID> for Tree<P, D, E> {

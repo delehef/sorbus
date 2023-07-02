@@ -29,16 +29,9 @@ impl<P, D, E> Tree<P, D, E> {
             fmt_edge: &EdgeFormatter,
         ) {
             if t[n].is_leaf() {
-                r.push_str(
-                    &t[n]
-                        .data
-                        .as_ref()
-                        .map(fmt_node)
-                        .unwrap_or_default()
-                        .to_string(),
-                );
+                r.push_str(&fmt_node(&t[n].data).to_string());
                 if let Some(e) = t[n].branch.as_ref() {
-                    r.push_str(&format!(":{}", fmt_edge(&e)));
+                    r.push_str(&format!(":{}", fmt_edge(e)));
                 }
             } else {
                 r.push('(');
@@ -51,16 +44,9 @@ impl<P, D, E> Tree<P, D, E> {
                     }
                 }
                 r.push(')');
-                r.push_str(
-                    &t[n]
-                        .data
-                        .as_ref()
-                        .map(fmt_node)
-                        .unwrap_or_default()
-                        .to_string(),
-                );
+                r.push_str(&fmt_node(&t[n].data).to_string());
                 if let Some(e) = t[n].branch.as_ref() {
-                    r.push_str(&format!(":{}", fmt_edge(&e)));
+                    r.push_str(&format!(":{}", fmt_edge(e)));
                 }
             }
         }
