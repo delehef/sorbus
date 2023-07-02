@@ -55,4 +55,68 @@ impl<P, D, E> Tree<P, D, E> {
         r.push(';');
         r
     }
+    pub fn to_string<
+        NodeFormatter: Fn(&P) -> S1,
+        S1: Display + Default,
+        EdgeFormatter: Fn(&E) -> S2,
+        S2: Display + Default,
+    >(
+        &self,
+        fmt_node: NodeFormatter,
+        fmt_edge: EdgeFormatter,
+        only_leaves: bool,
+    ) -> String {
+        fn render_node<
+            PP,
+            DD,
+            EE,
+            NodeFormatter: Fn(&PP) -> S1,
+            EdgeFormatter: Fn(&EE) -> S2,
+            S1: Display + Default,
+            S2: Display + Default,
+        >(
+            t: &Tree<PP, DD, EE>,
+            n: NodeID,
+            r: &mut String,
+            indent: usize,
+            only_leaves: bool,
+            fmt_node: &NodeFormatter,
+            fmt_edge: &EdgeFormatter,
+        ) {
+            if t[n].is_leaf() {
+                r.push_str(&" ".repeat(indent));
+                r.push_str(&fmt_node(&t[n].data).to_string());
+                if let Some(e) = t[n].branch.as_ref() {
+                    r.push_str(&format!(" {}", fmt_edge(e)));
+                }
+                r.push('\n');
+            } else {
+                if !only_leaves {
+                    r.push_str(&" ".repeat(indent));
+                    r.push_str(&fmt_node(&t[n].data).to_string());
+                    if let Some(e) = t[n].branch.as_ref() {
+                        r.push_str(&format!(":{}", fmt_edge(e)));
+                    }
+                    r.push('\n');
+                }
+
+                let mut children = t[n].children().iter().peekable();
+                while let Some(c) = children.next() {
+                    render_node(t, *c, r, indent + 2, only_leaves, fmt_node, fmt_edge);
+                }
+            }
+        }
+
+        let mut r = String::new();
+        render_node(
+            self,
+            self.root,
+            &mut r,
+            0,
+            only_leaves,
+            &fmt_node,
+            &fmt_edge,
+        );
+        r
+    }
 }
