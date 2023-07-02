@@ -2,11 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2023-07-02
+
+### Features
+
+- Add a `to_string` function
+
+### Refactor
+
+- `Payload` is not optional anymore
+
 ## [0.10.0] - 2023-07-02
 
 ### Features
 
 - Add sorting functions
+
+### Miscellaneous Tasks
+
+- Release sorbus version 0.10.0
 
 ## [0.9.0] - 2023-04-10
 
