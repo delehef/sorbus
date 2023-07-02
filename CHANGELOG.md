@@ -2,11 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2023-07-02
+
+### Features
+
+- Add sorting functions
+
 ## [0.9.0] - 2023-04-10
 
 ### Features
 
 - Add metadata to tree; add getter functions
+
+### Miscellaneous Tasks
+
+- Release sorbus version 0.9.0
 
 ## [0.8.1] - 2023-03-19
 
