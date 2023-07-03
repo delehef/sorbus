@@ -307,12 +307,14 @@ impl<P, D, E> Tree<P, D, E> {
             .find(|&n| f(self[n].data())))
     }
 
-    pub fn mrca(&self, nodes: impl IntoIterator<Item = NodeID>) -> Result<Option<NodeID>, Error> {
+    /// Compute the Most Recent Common Ancestor of a set of nodes.
+    /// If the set is empty, return the tree root.
+    pub fn mrca(&self, nodes: impl IntoIterator<Item = NodeID>) -> Result<NodeID, Error> {
         let mut nodes = nodes.into_iter();
         let first = if let Some(node) = nodes.next() {
             node
         } else {
-            return Ok(None);
+            return Ok(self.root);
         };
 
         let ancestors = self.ascendance(first);
@@ -334,7 +336,7 @@ impl<P, D, E> Tree<P, D, E> {
             }
         }
 
-        Ok(Some(ancestors[oldest]))
+        Ok(ancestors[oldest])
     }
 
     pub fn ascendance(&self, n: NodeID) -> Vec<NodeID> {
@@ -465,7 +467,7 @@ impl<P, D, E> Tree<P, D, E> {
     }
 
     /// Returns the topological depth of the
-    pub fn node_topological_depth(&self, n: NodeID) -> Result<usize, Error> {
+    pub fn node_topological_depth(&self, n: NodeID) -> Result<i64, Error> {
         let mut depth = 0;
         let mut n = n;
         while let Some(parent) = self.nodes.get(&n).ok_or(Error::NodeNotFound(n))?.parent {
