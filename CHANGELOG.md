@@ -2,11 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0] - 2023-07-03
+
+### Bug Fixes
+
+- MRCA always return something
+
 ## [0.11.0] - 2023-07-02
 
 ### Features
 
 - Add a `to_string` function
+
+### Miscellaneous Tasks
+
+- Release sorbus version 0.11.0
 
 ### Refactor
 
