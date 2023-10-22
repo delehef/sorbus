@@ -2,11 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.1] - 2023-10-22
+
+### Bug Fixes
+
+- Topological depth computation
+
 ## [0.12.0] - 2023-07-03
 
 ### Bug Fixes
 
 - MRCA always return something
+
+### Miscellaneous Tasks
+
+- Release sorbus version 0.12.0
 
 ## [0.11.0] - 2023-07-02
 
