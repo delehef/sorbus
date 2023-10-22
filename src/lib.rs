@@ -254,7 +254,7 @@ impl<P, D, E> Tree<P, D, E> {
         self[n]
             .children
             .iter()
-            .for_each(|c| self.print_node(*c, indent + 2, f, g))
+            .for_each(|c| self.print_node(*c, indent + 4, f, g))
     }
     pub fn print<
         NodeFormatter: Fn(&P) -> S1,
@@ -480,7 +480,7 @@ impl<P, D, E> Tree<P, D, E> {
     pub fn topological_depth(&self) -> (NodeID, usize) {
         fn _rec_depth<PP, DD, EE>(t: &Tree<PP, DD, EE>, n: NodeID) -> (NodeID, usize) {
             if t[n].is_leaf() {
-                (0, n)
+                (n, 0)
             } else {
                 let (n, d) = t[n]
                     .children()
@@ -492,7 +492,7 @@ impl<P, D, E> Tree<P, D, E> {
             }
         }
 
-        _rec_depth(self, 0)
+        _rec_depth(self, self.root)
     }
 
     pub fn for_each_leave<F: FnMut(&Node<P, E>)>(&self, f: &mut F) {
