@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::{NodeID, Tree};
+use crate::{NodeHandle, Tree};
 
 impl<P, D, E> Tree<P, D, E> {
     pub fn to_newick<
@@ -23,7 +23,7 @@ impl<P, D, E> Tree<P, D, E> {
             S2: Display + Default,
         >(
             t: &Tree<PP, DD, EE>,
-            n: NodeID,
+            n: NodeHandle,
             r: &mut String,
             fmt_node: &NodeFormatter,
             fmt_edge: &EdgeFormatter,
@@ -51,7 +51,7 @@ impl<P, D, E> Tree<P, D, E> {
             }
         }
         let mut r = String::new();
-        render_node(self, self.root, &mut r, &fmt_node, &fmt_edge);
+        render_node(self, self.root(), &mut r, &fmt_node, &fmt_edge);
         r.push(';');
         r
     }
@@ -76,7 +76,7 @@ impl<P, D, E> Tree<P, D, E> {
             S2: Display + Default,
         >(
             t: &Tree<PP, DD, EE>,
-            n: NodeID,
+            n: NodeHandle,
             r: &mut String,
             indent: usize,
             only_leaves: bool,
@@ -110,7 +110,7 @@ impl<P, D, E> Tree<P, D, E> {
         let mut r = String::new();
         render_node(
             self,
-            self.root,
+            self.root(),
             &mut r,
             0,
             only_leaves,
