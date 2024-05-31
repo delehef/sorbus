@@ -3,6 +3,12 @@ use std::fmt::Display;
 use crate::{NodeHandle, Tree};
 
 impl<P, D, E> Tree<P, D, E> {
+    /// Return a newick representation of the tree, leveraging the given formatting functions.
+    ///
+    /// # Arguments
+    ///
+    /// * `node_printer` - A function producing a [`Display`]-able value from a node.
+    /// * `edge_printer` - A function producing a [`Display`]-able value from an edge.
     pub fn to_newick<
         NodeFormatter: Fn(&P) -> S1,
         S1: Display + Default,
@@ -28,7 +34,7 @@ impl<P, D, E> Tree<P, D, E> {
             fmt_node: &NodeFormatter,
             fmt_edge: &EdgeFormatter,
         ) {
-            if t[n].is_leaf() {
+            if t.is_leaf(n) {
                 r.push_str(&fmt_node(&t[n].data).to_string());
                 if let Some(e) = t[n].branch.as_ref() {
                     r.push_str(&format!(":{}", fmt_edge(e)));
@@ -36,7 +42,7 @@ impl<P, D, E> Tree<P, D, E> {
             } else {
                 r.push('(');
 
-                let mut children = t[n].children().iter().peekable();
+                let mut children = t.children[&n].iter().peekable();
                 while let Some(c) = children.next() {
                     render_node(t, *c, r, fmt_node, fmt_edge);
                     if children.peek().is_some() {
@@ -55,6 +61,13 @@ impl<P, D, E> Tree<P, D, E> {
         r.push(';');
         r
     }
+
+    /// Return a string representation of the tree, leveraging the given formatting functions.
+    ///
+    /// # Arguments
+    ///
+    /// * `node_printer` - A function producing a [`Display`]-able value from a node.
+    /// * `edge_printer` - A function producing a [`Display`]-able value from an edge.
     pub fn to_string<
         NodeFormatter: Fn(&P) -> S1,
         S1: Display + Default,
@@ -83,7 +96,7 @@ impl<P, D, E> Tree<P, D, E> {
             fmt_node: &NodeFormatter,
             fmt_edge: &EdgeFormatter,
         ) {
-            if t[n].is_leaf() {
+            if t.is_leaf(n) {
                 r.push_str(&" ".repeat(indent));
                 r.push_str(&fmt_node(&t[n].data).to_string());
                 if let Some(e) = t[n].branch.as_ref() {
@@ -100,7 +113,7 @@ impl<P, D, E> Tree<P, D, E> {
                     r.push('\n');
                 }
 
-                let mut children = t[n].children().iter().peekable();
+                let mut children = t.children[&n].iter().peekable();
                 while let Some(c) = children.next() {
                     render_node(t, *c, r, indent + 2, only_leaves, fmt_node, fmt_edge);
                 }

@@ -4,6 +4,8 @@
 //! carrying an optional payload, as well as an optional
 //! annotation to the edge linking them to their parent.
 //!
+//! Internally, nodes are stored in a vec, and the topology of the tree
+//!
 //! Each node in the tree may contain an arbitratry number of
 //! children.
 use errors::Error;
@@ -15,105 +17,131 @@ pub mod render;
 
 pub type NodeHandle = usize;
 
-/// A node in the tree. A [`Node`] can carry a `Payload`, and annotate the
+/// A node in the tree. A [`Node`] can carry a `Payload`, and can annotate the
 /// branch to its parent with an `Edge`.
-pub struct Node<Payload, Edge, Children = Vec<NodeHandle>> {
+pub struct Node<Payload, Edge> {
     parent: Option<NodeHandle>,
-    children: Children,
     branch: Option<Edge>,
     data: Payload,
 }
 impl<Payload, Edge> Node<Payload, Edge> {
-    /// Return `true` if this node has no children.
-    pub fn is_leaf(&self) -> bool {
-        self.children.is_empty()
-    }
-
-    /// Returns a slice of the [`NodeID`] of this node children.
-    pub fn children(&self) -> &[NodeHandle] {
-        &self.children
-    }
-
-    /// If this node has a `Payload`, returns a reference to it
+    /// If this node has a `Payload`, return a reference to it.
     pub fn data(&self) -> &Payload {
         &self.data
     }
 
-    /// If this node has a `Payload`, returns a mutable reference to it
+    /// If this node has a `Payload`, return a mutable reference to it.
     pub fn data_mut(&mut self) -> &mut Payload {
         &mut self.data
     }
 
-    /// Set the [`Payload`] of this [`Node`]
+    /// Set the `Payload` of this `Node`.
     pub fn set_data(&mut self, e: Payload) {
         self.data = e
     }
 
-    /// Returns a reference to this node parent branch [`Edge`]
+    /// Returns a reference to this node parent branch `Edge`.
     pub fn branch(&self) -> Option<&Edge> {
         self.branch.as_ref()
     }
 
-    /// Set the [`Edge`] of this node parent branch
+    /// Set the `Edge` of this node parent branch.
     pub fn set_branch(&mut self, e: Edge) {
         self.branch = Some(e)
     }
 
-    /// Unset the [`Edge`] of this node parent branch
+    /// Unset the `Edge` of this node parent branch.
     pub fn unset_branch(&mut self) {
         self.branch = None
     }
 }
 
-pub struct Tree<Payload = (), MetaData = (), Edge = ()> {
+pub struct Tree<Payload = (), MetaData = (), Edge = (), Children = Vec<NodeHandle>> {
     current_id: NodeHandle,
     metadata: MetaData,
     nodes: IntMap<NodeHandle, Node<Payload, Edge>>,
+    children: IntMap<NodeHandle, Children>,
+    arity: Option<usize>,
     _spans_set: IntMap<NodeHandle, IntSet<NodeHandle>>,
     _descendants: IntMap<NodeHandle, Vec<NodeHandle>>,
 }
 
-impl<P, D: Default, E> Default for Tree<P, D, E> {
-    fn default() -> Self {
-        Self::with_metadata(D::default())
-    }
-}
 impl<P, D: Default, E> Tree<P, D, E> {
+    /// Create a new tree
     pub fn new() -> Self {
         Self {
             current_id: 0,
             metadata: D::default(),
             nodes: Default::default(),
+            children: Default::default(),
+            arity: None,
+            _spans_set: Default::default(),
+            _descendants: Default::default(),
+        }
+    }
+
+    /// Create a new binary tree, i.e. of arity 2
+    pub fn binary() -> Self {
+        Self {
+            current_id: 0,
+            metadata: D::default(),
+            nodes: Default::default(),
+            children: Default::default(),
+            arity: Some(2),
+            _spans_set: Default::default(),
+            _descendants: Default::default(),
+        }
+    }
+
+    /// Create a new tree with as most `arity` children per node
+    pub fn with_arity(arity: usize) -> Self {
+        Self {
+            current_id: 0,
+            metadata: D::default(),
+            nodes: Default::default(),
+            children: Default::default(),
+            arity: Some(arity),
             _spans_set: Default::default(),
             _descendants: Default::default(),
         }
     }
 }
 impl<P, D, E> Tree<P, D, E> {
-    pub fn with_metadata(metadata: D) -> Self {
-        Self {
-            metadata,
-            current_id: 0,
-            nodes: Default::default(),
-            _spans_set: Default::default(),
-            _descendants: Default::default(),
-        }
+    /// Assign the given `metadata` as the meta-data associated to this tree.
+    pub fn set_metadata(&mut self, metadata: D) {
+        self.metadata = metadata;
     }
 
+    /// Return a reference to the meta-data associated to this tree.
     pub fn metadata(&self) -> &D {
         &self.metadata
     }
 
+    /// Return a mutable reference to the meta-data associated to this tree.
     pub fn metadata_mut(&mut self) -> &mut D {
         &mut self.metadata
     }
 
+    /// Return a reference the node identified by `n` if it exists, or
+    /// [`Error::NodeNotFound`] otherwise.
     pub fn get(&self, n: NodeHandle) -> Result<&Node<P, E>, Error> {
         self.nodes.get(&n).ok_or(Error::NodeNotFound(n))
     }
 
+    /// Return a mutable reference the node identified by `n` if it exists, or
+    /// [`Error::NodeNotFound`] otherwise.
     pub fn get_mut(&mut self, n: NodeHandle) -> Result<&mut Node<P, E>, Error> {
         self.nodes.get_mut(&n).ok_or(Error::NodeNotFound(n))
+    }
+
+    /// Return `true` if the node `n` has no children.
+    pub fn is_leaf(&self, n: NodeHandle) -> bool {
+        self.children[&n].is_empty()
+    }
+
+    /// Return a reference to the children of the node `n`.
+    pub fn children(&self, n: NodeHandle) -> &[NodeHandle] {
+        &self.children[&n]
     }
 
     pub fn root(&self) -> NodeHandle {
@@ -127,32 +155,34 @@ impl<P, D, E> Tree<P, D, E> {
             .cloned()
     }
 
+    /// Return true if the given node is root; panic if it does not exist.
     pub fn is_root(&self, n: NodeHandle) -> bool {
         self[n].parent.is_none()
     }
 
+    /// Provide an iterator over all the node handles in the tree.
     pub fn nodes(&self) -> impl Iterator<Item = NodeHandle> + '_ {
         self.nodes.keys().cloned()
     }
 
-    pub fn leaves(&self) -> impl Iterator<Item = NodeHandle> + '_ {
-        self.nodes
-            .iter()
-            .filter(|(_, n)| n.is_leaf())
-            .map(|(i, _)| i)
-            .copied()
+    /// Return an iterator over mutable reference to the nodes of the tree.
+    pub fn nodes_mut(&mut self) -> impl Iterator<Item = &mut Node<P, E>> {
+        self.nodes.values_mut()
     }
 
+    /// Provide an iterator over the handles of all the leaves of this tree.
+    pub fn leaves(&self) -> impl Iterator<Item = NodeHandle> + '_ {
+        self.nodes.keys().filter(|&&n| self.is_leaf(n)).copied()
+    }
+
+    /// Return the number of nodes in this tree.
     pub fn len(&self) -> NodeHandle {
         self.nodes.len()
     }
 
+    /// Return true if the tree is empty.
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
-    }
-
-    pub fn nodes_mut(&mut self) -> impl Iterator<Item = &mut Node<P, E>> {
-        self.nodes.values_mut()
     }
 
     fn insert_node(&mut self, parent: Option<NodeHandle>, n: Node<P, E>) -> NodeHandle {
@@ -162,7 +192,10 @@ impl<P, D, E> Tree<P, D, E> {
         assert!(parent.is_none() || self.nodes.contains_key(&parent.unwrap()));
         self.nodes.insert(id, n);
         if let Some(parent) = parent {
-            self[parent].children.push(id);
+            if let Some(arity) = self.arity {
+                assert!(self.children(parent).len() < arity)
+            }
+            self.children.get_mut(&parent).unwrap().push(id);
         }
 
         id
@@ -177,59 +210,72 @@ impl<P, D, E> Tree<P, D, E> {
             parent,
             Node {
                 parent,
-                children: vec![],
                 branch: None,
                 data,
             },
         )
     }
 
-    pub fn plug(&mut self, target: NodeHandle, n: NodeHandle) {
-        assert!(self.nodes[&n].parent.is_none());
-        assert!(!self.nodes[&target].children.contains(&n));
+    /// Connect the free-standing node `n` under `target`.
+    ///
+    /// Panic if `n` is not free-standing or if the arity constraints are broken.
+    pub fn plug(&mut self, n: NodeHandle, target: NodeHandle) {
+        assert!(self[n].parent.is_none());
+        assert!(!self.children[&target].contains(&n));
+        if let Some(arity) = self.arity {
+            assert!(self.children[&target].len() < arity)
+        }
         self.nodes.get_mut(&n).unwrap().parent = Some(target);
-        self.nodes.get_mut(&target).unwrap().children.push(n)
+        self.children.get_mut(&target).unwrap().push(n);
     }
 
+    /// Disconnect the node `n` from its parent.
     pub fn unplug(&mut self, n: NodeHandle) {
         let parent = self.nodes[&n].parent;
-        assert!(parent.is_none() || self.nodes[&parent.unwrap()].children.contains(&n));
+        assert!(parent.is_none() || self.children[&parent.unwrap()].contains(&n));
 
         self.nodes.get_mut(&n).unwrap().parent = None;
         if let Some(parent) = parent {
-            self.nodes
+            self.children
                 .get_mut(&parent)
                 .unwrap()
-                .children
                 .retain(|nn| *nn != n);
         }
     }
 
-    pub fn delete_node(&mut self, n: NodeHandle) -> Option<()> {
+    /// Delete the node `n`, and all its children recursively.
+    ///
+    /// Panic if `n` does not exist in the tree.
+    pub fn delete_node(&mut self, n: NodeHandle) {
         assert!(self.nodes.contains_key(&n));
-        for c in self[n].children.clone().into_iter() {
+        for c in self.children[&n].clone().into_iter() {
             self.delete_node(c);
         }
         self.unplug(n);
-        self.nodes.remove(&n).map(|_| ())
+        self.nodes.remove(&n);
     }
 
-    pub fn delete_nodes(&mut self, ns: &[NodeHandle]) -> Option<()> {
+    /// Delete the nodes `ns`, and all their children recursively.
+    ///
+    /// Panic if any node in `ns` does not exist.
+    pub fn delete_nodes(&mut self, ns: &[NodeHandle]) {
         for n in ns {
-            self.delete_node(*n)?;
+            self.delete_node(*n);
         }
-        Some(())
     }
 
-    pub fn move_node(&mut self, n: NodeHandle, dest: NodeHandle) {
+    /// Move `n` from its current position to under `target`.
+    ///
+    /// Panic if `n` is free-standing or if arity constraints is broken.
+    pub fn move_node(&mut self, n: NodeHandle, target: NodeHandle) {
         self.unplug(n);
-        self.plug(dest, n);
+        self.plug(target, n);
     }
 
     /// Insert the existing node `between` between the nodes `a` and `b`;
-    /// turning a <-- b into a <-- between <-- b.
+    /// turning `a <-- b` into `a <-- between <-- b`.
     ///
-    /// Panic if a is not the parent of b.
+    /// Panic if a is not the parent of b or if arity constraint is broken.
     pub fn insert_between(&mut self, between: NodeHandle, a: NodeHandle, b: NodeHandle) {
         if let Some(b_parent) = self.parent(b) {
             assert!(b_parent == a);
@@ -242,65 +288,32 @@ impl<P, D, E> Tree<P, D, E> {
         self.plug(between, b);
     }
 
-    fn print_node<
-        NodeFormatter: Fn(&P) -> S1,
-        S1: Default + Display,
-        EdgeFormatter: Fn(&E) -> S2,
-        S2: Default + Display,
-    >(
-        &self,
-        n: NodeHandle,
-        indent: NodeHandle,
-        f: &NodeFormatter,
-        g: &EdgeFormatter,
-    ) {
-        println!(
-            "{}{}{}",
-            str::repeat(" ", indent),
-            f(&self[n].data),
-            self[n]
-                .branch
-                .as_ref()
-                .map(|x| format!(":{}", g(x)))
-                .unwrap_or_default(),
-        );
-        self[n]
-            .children
-            .iter()
-            .for_each(|c| self.print_node(*c, indent + 4, f, g))
-    }
-    pub fn print<
-        NodeFormatter: Fn(&P) -> S1,
-        S1: Default + Display,
-        EdgeFormatter: Fn(&E) -> S2,
-        S2: Default + Display,
-    >(
-        &self,
-        node_printer: NodeFormatter,
-        edge_printer: EdgeFormatter,
-    ) {
-        if !self.nodes.is_empty() {
-            for root in self.roots() {
-                self.print_node(root, 0, &node_printer, &edge_printer);
-            }
-        }
-    }
-
+    /// Return the parent of `n`, or `None` if `n` is a root.
     pub fn parent(&self, n: NodeHandle) -> Option<NodeHandle> {
         self[n].parent
     }
 
+    /// Return, if it exists, the first leaf in tree satisfying the predicate.
+    ///
+    /// # Arguments
+    ///
+    /// * f - A predicate taking a reference to a node payload
     pub fn find_leaf<F>(&self, f: F) -> Option<NodeHandle>
     where
         F: Fn(&P) -> bool,
     {
         self.nodes
             .iter()
-            .filter(|(_, n)| n.is_leaf())
+            .filter(|(i, _)| self.is_leaf(**i))
             .find(|(_i, n)| f(&n.data))
             .map(|(i, _)| *i)
     }
 
+    /// Return, if it exists, the first node in tree satisfying the predicate.
+    ///
+    /// # Arguments
+    ///
+    /// * f - A predicate taking a reference to a node payload
     pub fn find_node<F>(&self, f: F) -> Option<NodeHandle>
     where
         F: Fn(&P) -> bool,
@@ -311,15 +324,20 @@ impl<P, D, E> Tree<P, D, E> {
             .map(|(i, _)| *i)
     }
 
-    pub fn find_child<F>(&self, n: NodeHandle, f: F) -> Result<Option<NodeHandle>, Error>
+    /// Return, if it exists, the first child of `n` tree satisfying the predicate.
+    ///
+    /// # Arguments
+    ///
+    /// * n - The reference node
+    /// * f - A predicate taking a reference to a node payload
+    pub fn find_child<F>(&self, n: NodeHandle, f: F) -> Option<NodeHandle>
     where
         F: Fn(&P) -> bool,
     {
-        Ok(self
-            .children(n)?
+        self.children(n)
             .iter()
             .cloned()
-            .find(|&n| f(self[n].data())))
+            .find(|&n| f(self[n].data()))
     }
 
     /// Compute the Most Recent Common Ancestor of a set of nodes.
@@ -354,6 +372,9 @@ impl<P, D, E> Tree<P, D, E> {
         Ok(ancestors[oldest])
     }
 
+    /// Return the lineage of n, i.e. the direct path from `n` to the root.
+    ///
+    /// Panic if `n` does not exist in the tree.
     pub fn ascendance(&self, n: NodeHandle) -> Vec<NodeHandle> {
         let mut r = Vec::new();
         let mut parent = Some(n);
@@ -366,6 +387,10 @@ impl<P, D, E> Tree<P, D, E> {
         r
     }
 
+    /// Find all the descendants of `n`, i.e. all the nodes below `n` in the
+    /// tree, not including `n`.
+    ///
+    /// Panic if `n` does not exist in the tree.
     pub fn descendants(&self, n: NodeHandle) -> Vec<NodeHandle> {
         fn find_descendants<PP, DD, EE>(
             t: &Tree<PP, DD, EE>,
@@ -373,28 +398,34 @@ impl<P, D, E> Tree<P, D, E> {
             ax: &mut Vec<NodeHandle>,
         ) {
             ax.push(n);
-            for &c in t[n].children.iter() {
+            for &c in t.children[&n].iter() {
                 find_descendants(t, c, ax);
             }
         }
 
         let mut r = vec![];
-        for &c in self[n].children.iter() {
+        for &c in self.children[&n].iter() {
             find_descendants(self, c, &mut r);
         }
         r
     }
 
+    /// Return a [`Vec`] containing all the leaves being descendant of `n`.
+    pub fn leaves_of(&self, n: NodeHandle) -> Vec<NodeHandle> {
+        self.leave_set_of(n).into_iter().collect()
+    }
+
+    /// Return a set containing all the leaves being descendant of `n`.
     pub fn leave_set_of(&self, n: NodeHandle) -> IntSet<NodeHandle> {
         fn find_descendants_leaves<PP, DD, EE>(
             t: &Tree<PP, DD, EE>,
             n: NodeHandle,
             ax: &mut IntSet<NodeHandle>,
         ) {
-            if t[n].is_leaf() {
+            if t.is_leaf(n) {
                 ax.insert(n);
             } else {
-                for &c in t[n].children.iter() {
+                for &c in t.children[&n].iter() {
                     find_descendants_leaves(t, c, ax);
                 }
             }
@@ -403,10 +434,6 @@ impl<P, D, E> Tree<P, D, E> {
         let mut r = Default::default();
         find_descendants_leaves(self, n, &mut r);
         r
-    }
-
-    pub fn leaves_of(&self, n: NodeHandle) -> Vec<NodeHandle> {
-        self.leave_set_of(n).into_iter().collect()
     }
 
     pub fn cache_descendants(&mut self) {
@@ -455,16 +482,12 @@ impl<P, D, E> Tree<P, D, E> {
         r
     }
 
-    pub fn children(&self, n: NodeHandle) -> Result<&[NodeHandle], Error> {
-        Ok(self.get(n)?.children())
-    }
-
     pub fn siblings(&self, n: NodeHandle) -> Vec<NodeHandle> {
         if let Some(parent) = self[n].parent {
             self.descendants(parent)
                 .into_iter()
                 .filter(|&nn| nn != n)
-                .filter(|n| self[*n].is_leaf())
+                .filter(|n| self.is_leaf(*n))
                 .collect()
         } else {
             vec![]
@@ -475,7 +498,13 @@ impl<P, D, E> Tree<P, D, E> {
         todo!()
     }
 
-    pub fn node_depth<Measure: Fn(&E) -> f32>(&self, n: NodeHandle, f: &Measure) -> f32 {
+    /// Compute the depth of `n` according to the given measure.
+    ///
+    /// # Arguments
+    ///
+    /// * `n` - The node to compute the depth of.
+    /// * `f` - A function associating a length to a an edge.
+    pub fn depth_of<Measure: Fn(&E) -> f32>(&self, n: NodeHandle, f: &Measure) -> f32 {
         let mut depth = self[n].branch.as_ref().map(f).unwrap_or(0.);
         let mut n = n;
         while let Some(parent) = self[n].parent {
@@ -485,24 +514,26 @@ impl<P, D, E> Tree<P, D, E> {
         depth
     }
 
-    /// Returns the topological depth of the
-    pub fn node_topological_depth(&self, n: NodeHandle) -> Result<i64, Error> {
+    /// Return the topological depth of `n`, i.e. its distance to the root of
+    /// the tree.
+    pub fn topological_depth_of(&self, n: NodeHandle) -> Result<i64, Error> {
         let mut depth = 0;
         let mut n = n;
-        while let Some(parent) = self.nodes.get(&n).ok_or(Error::NodeNotFound(n))?.parent {
+        while let Some(parent) = self.nodes[&n].parent {
             depth += 1;
             n = parent;
         }
         Ok(depth)
     }
 
+    /// Compute the topological depth of the tree, i.e. the depth of the deepest node.
     pub fn topological_depth(&self) -> (NodeHandle, usize) {
         fn _rec_depth<PP, DD, EE>(t: &Tree<PP, DD, EE>, n: NodeHandle) -> (NodeHandle, usize) {
-            if t[n].is_leaf() {
+            if t.is_leaf(n) {
                 (n, 0)
             } else {
-                let (n, d) = t[n]
-                    .children()
+                let (n, d) = t
+                    .children(n)
                     .iter()
                     .map(|&c| _rec_depth(t, c))
                     .max_by_key(|(_, d)| *d)
@@ -514,44 +545,99 @@ impl<P, D, E> Tree<P, D, E> {
         _rec_depth(self, self.root())
     }
 
+    /// Execute a function over all the leaves of the tree.
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - a function taking a reference to a node
     pub fn for_each_leave<F: FnMut(&Node<P, E>)>(&self, f: &mut F) {
-        self.nodes.values().filter(|n| n.is_leaf()).for_each(f);
+        self.nodes
+            .iter()
+            .filter_map(|(i, n)| if self.is_leaf(*i) { Some(n) } else { None })
+            .for_each(f);
     }
 
+    /// Execute a function over all the leaves of the tree.
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - a function taking a mutable reference to a node
     pub fn for_each_leave_mut<F: FnMut(&mut Node<P, E>)>(&mut self, f: &mut F) {
-        self.nodes.values_mut().filter(|n| n.is_leaf()).for_each(f);
+        let to_process = self
+            .nodes
+            .keys()
+            .filter(|i| self.is_leaf(**i))
+            .copied()
+            .collect::<Vec<_>>();
+
+        to_process
+            .into_iter()
+            .for_each(|i| f(self.nodes.get_mut(&i).unwrap()));
     }
 
+    /// Return an iterator over all the non-leaf nodes of the tree.
     pub fn inners(&self) -> impl Iterator<Item = NodeHandle> + '_ {
         self.nodes
             .keys()
-            .filter(move |n| !self.nodes[n].is_leaf())
+            .filter(move |n| !self.is_leaf(**n))
             .copied()
     }
 
-    pub fn prune_by<U: Fn(&Node<P, E>) -> bool>(&mut self, is_useless: &U) {
+    /// Recursively delete all the nodes satisfyin the given predicate.
+    ///
+    /// # Arguments
+    ///
+    /// * `is_useless` - A predicate taking a node, and returning whether it
+    /// should be removed.
+    pub fn prune_by<U: Fn(NodeHandle, &Node<P, E>) -> bool>(&mut self, is_useless: U) {
         loop {
-            let todo = self.nodes.keys().cloned().find(|k| is_useless(&self[*k]));
+            let todo = self
+                .nodes
+                .iter()
+                .find_map(|(i, n)| if is_useless(*i, n) { Some(i) } else { None })
+                .copied();
 
-            if let Some(k) = todo {
-                let children = self[k].children().to_vec();
+            if let Some(i) = todo {
+                let children = self.children(i).to_vec();
                 for c in children {
-                    self.move_node(c, self[k].parent.unwrap());
+                    self.move_node(c, self.parent(i).unwrap());
                 }
-                self.delete_node(k);
+                self.delete_node(i);
             } else {
                 break;
             }
         }
     }
 
-    // Remove empty inner nodes (i.e. nodes without content nor children)
-    // and compress redundant inner nodes (i.e. nodes with a single child and no content)
+    /// Remove empty inner nodes (i.e. nodes without content nor children) and
+    /// compress redundant inner nodes (i.e. nodes with a single child and no
+    /// content).
     pub fn prune(&mut self, is_empty: impl Fn(&P) -> bool) {
-        self.prune_by(&|n: &Node<P, E>| {
-            (n.children().is_empty() && is_empty(&n.data))
-                || (n.children().len() == 1 && is_empty(&n.data))
-        });
+        loop {
+            let todo = self
+                .nodes
+                .iter()
+                .find_map(|(i, n)| {
+                    if (self.children(*i).is_empty() && is_empty(&n.data))
+                        || (self.children(*i).len() == 1 && is_empty(&n.data))
+                    {
+                        Some(i)
+                    } else {
+                        None
+                    }
+                })
+                .copied();
+
+            if let Some(i) = todo {
+                let children = self.children(i).to_vec();
+                for c in children {
+                    self.move_node(c, self.parent(i).unwrap());
+                }
+                self.delete_node(i);
+            } else {
+                break;
+            }
+        }
     }
 
     fn rec_sort_by<K: Ord + Clone + std::fmt::Debug>(
@@ -560,35 +646,95 @@ impl<P, D, E> Tree<P, D, E> {
         k: &impl Fn(&P) -> K,
         by_leaves: bool,
     ) -> K {
-        let mut children = self[n].children.clone();
+        let mut children = self.children[&n].clone();
         children.sort_by_cached_key(|c| k(self[*c].data()));
-        self[n].children = children;
+        self.children.insert(n, children);
 
-        if by_leaves || self[n].children.is_empty() {
+        if by_leaves || self.children[&n].is_empty() {
             k(&self[n].data)
         } else {
-            k(&self[self[n].children[0]].data)
+            k(&self[self.children[&n][0]].data)
         }
     }
 
+    /// Sort all sibling nodes according to the given key function.
+    ///
+    /// # Arguments
+    ///
+    /// * k - a function producing a [`Ord`] sorting criterion from a node data
     pub fn sort_by<K: std::fmt::Debug + Ord + Clone>(&mut self, k: impl Fn(&P) -> K) {
         let _ = self.rec_sort_by(self.root(), &k, false);
     }
 
+    /// Sort sibling leave nodes according to the given key function.
+    ///
+    /// # Arguments
+    ///
+    /// * k - a function producing a [`Ord`] sorting criterion from a node data
     pub fn sort_leaves_by<K: std::fmt::Debug + Ord + Clone>(&mut self, k: impl Fn(&P) -> K) {
         let _ = self.rec_sort_by(self.root(), &k, true);
+    }
+
+    fn print_node<
+        NodeFormatter: Fn(&P) -> S1,
+        S1: Default + Display,
+        EdgeFormatter: Fn(&E) -> S2,
+        S2: Default + Display,
+    >(
+        &self,
+        n: NodeHandle,
+        indent: NodeHandle,
+        f: &NodeFormatter,
+        g: &EdgeFormatter,
+    ) {
+        println!(
+            "{}{}{}",
+            str::repeat(" ", indent),
+            f(&self[n].data),
+            self[n]
+                .branch
+                .as_ref()
+                .map(|x| format!(":{}", g(x)))
+                .unwrap_or_default(),
+        );
+        self.children[&n]
+            .iter()
+            .for_each(|c| self.print_node(*c, indent + 4, f, g))
+    }
+
+    /// Print a text representation of the tree, leveraging the given formatting functions.
+    ///
+    /// # Arguments
+    ///
+    /// * `node_printer` - A function producing a [`Display`]-able value from a node.
+    /// * `edge_printer` - A function producing a [`Display`]-able value from an edge.
+    pub fn print<
+        NodeFormatter: Fn(&P) -> S1,
+        S1: Default + Display,
+        EdgeFormatter: Fn(&E) -> S2,
+        S2: Default + Display,
+    >(
+        &self,
+        node_printer: NodeFormatter,
+        edge_printer: EdgeFormatter,
+    ) {
+        if !self.nodes.is_empty() {
+            for root in self.roots() {
+                self.print_node(root, 0, &node_printer, &edge_printer);
+            }
+        }
     }
 }
 impl<'a, P: Ord, D, E> Tree<P, D, E> {
     fn rec_sort(&'a mut self, n: NodeHandle, by_leaves: bool) -> &P {
-        let mut children = self[n].children.clone();
+        let mut children = self.children[&n].clone();
         children.sort_by_cached_key(|c| self[*c].data());
-        self[n].children = children;
+        self.children.insert(n, children);
 
-        if by_leaves || self[n].children.is_empty() {
+        if by_leaves || self.children[&n].is_empty() {
             &self[n].data
         } else {
-            &self[self[n].children[0]].data
+            &self[self.children[&n][0]].data
         }
     }
 
